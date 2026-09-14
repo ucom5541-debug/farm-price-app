@@ -1,0 +1,220 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, "Noto Sans Thai", sans-serif;
+  background: #f3f8f3;
+  color: #1f2937;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  background: #f3f8f3;
+}
+
+.header {
+  background: linear-gradient(135deg, #176b3a, #2e9b57);
+  color: white;
+  padding: 35px 20px;
+  text-align: center;
+  border-radius: 0 0 30px 30px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.15);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 36px;
+}
+
+.header p {
+  margin: 8px 0 0;
+  font-size: 17px;
+  opacity: 0.9;
+}
+
+.dashboard {
+  width: 90%;
+  max-width: 900px;
+  margin: 30px auto;
+}
+
+.dashboard h2 {
+  text-align: center;
+  color: #176b3a;
+  margin-bottom: 5px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #6b7280;
+  margin-bottom: 25px;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.menu-card {
+  background: white;
+  border-radius: 20px;
+  padding: 28px 20px;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5eee7;
+  transition: 0.2s;
+}
+
+.menu-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.12);
+}
+
+.menu-card > span {
+  display: block;
+  font-size: 38px;
+  margin-bottom: 10px;
+}
+
+.menu-card h3 {
+  margin: 5px 0;
+  color: #176b3a;
+  font-size: 21px;
+}
+
+.menu-card p {
+  margin: 7px 0 0;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .header {
+    padding: 28px 15px;
+  }
+
+  .header h1 {
+    font-size: 28px;
+  }
+
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard {
+    width: 92%;
+    margin-top: 22px;
+  }
+}.menu-card {
+  cursor: pointer;
+}
+
+.back-button {
+  border: none;
+  background: #176b3a;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+.price-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.price-table th,
+.price-table td {
+  padding: 10px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.price-table th {
+  background: #eaf5ec;
+  color: #176b3a;
+}
+
+.price-chart {
+  margin-top: 16px;
+  width: 100%;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.chart-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.chart-time {
+  width: 70px;
+  min-width: 70px;
+  font-size: 13px;
+  text-align: right;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.chart-bar-wrap {
+  flex: 1;
+  min-width: 0;
+  background: #e8eeee;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 28px;
+}
+
+.chart-bar {
+  min-width: 45px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #4f8f83;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.chart-range-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+
+.chart-range-buttons button {
+  padding: 7px 16px;
+  border: 1px solid #4f8f83;
+  border-radius: 8px;
+  background: white;
+  color: #4f8f83;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.chart-range-buttons button.active {
+  background: #4f8f83;
+  color: white;
+}
