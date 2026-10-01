@@ -344,7 +344,7 @@ useEffect(() => {
 {history.length === 0 ? (
   <p>ยังไม่มีข้อมูลราคาย้อนหลัง</p>
 ) : (
-  history.map((item, index) => (
+  history.slice(-4).map((item, index) => (
     <div key={index}>
       <strong>{item.averagePrice} บาท/กก.</strong>
       <br />
