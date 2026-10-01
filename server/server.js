@@ -766,7 +766,22 @@ if (url.pathname === "/api/history") {
       data: history,
     })
   );
-}    // -----------------------
+}
+if (url.pathname === "/api/save-daily-prices") {
+  await saveDailyPrices();
+
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+  });
+
+  return res.end(
+    JSON.stringify({
+      status: "ok",
+      message: "บันทึกราคารายวันเรียบร้อย",
+    })
+  );
+}
+// -----------------------
     // Compatibility
     // ให้ App.jsx เดิมยังเรียกได้
     // -----------------------
