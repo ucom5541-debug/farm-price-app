@@ -768,8 +768,7 @@ if (url.pathname === "/api/history") {
   );
 }
 if (url.pathname === "/api/save-daily-prices") {
-  await saveDailyPrices();
-
+saveDailyPrices().catch(console.error);
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
   });

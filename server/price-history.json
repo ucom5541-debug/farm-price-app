@@ -4165,5 +4165,374 @@
     "maxPrice": 340,
     "sourceCount": 2,
     "timestamp": "2026-10-01T13:37:55.490Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 127.5,
+    "minPrice": 100,
+    "maxPrice": 150,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.026Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 43,
+    "minPrice": 36,
+    "maxPrice": 46,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.041Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 47.5,
+    "minPrice": 38,
+    "maxPrice": 54,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.052Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 53,
+    "minPrice": 42,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.063Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 115,
+    "minPrice": 80,
+    "maxPrice": 160,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.072Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 37.75,
+    "minPrice": 35,
+    "maxPrice": 45,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.077Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 53.75,
+    "minPrice": 35,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.109Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 105,
+    "minPrice": 80,
+    "maxPrice": 130,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.125Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 62.5,
+    "minPrice": 50,
+    "maxPrice": 80,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.140Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 13.5,
+    "minPrice": 10,
+    "maxPrice": 20,
+    "sourceCount": 2,
+    "timestamp": "2026-10-02T12:14:15.147Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 95,
+    "minPrice": 90,
+    "maxPrice": 100,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.345Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 53,
+    "minPrice": 52,
+    "maxPrice": 54,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.454Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 53,
+    "minPrice": 50,
+    "maxPrice": 56,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.553Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 47.5,
+    "minPrice": 45,
+    "maxPrice": 50,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.626Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 95,
+    "minPrice": 90,
+    "maxPrice": 100,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.730Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 35,
+    "minPrice": 30,
+    "maxPrice": 40,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.868Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 37.5,
+    "minPrice": 35,
+    "maxPrice": 40,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:01.975Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 110,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:02.030Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 57,
+    "minPrice": 54,
+    "maxPrice": 60,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:02.067Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 12,
+    "minPrice": 11,
+    "maxPrice": 13,
+    "sourceCount": 1,
+    "timestamp": "2026-10-03T12:11:02.125Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 105,
+    "minPrice": 90,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.712Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 52,
+    "minPrice": 50,
+    "maxPrice": 54,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.722Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 52.5,
+    "minPrice": 50,
+    "maxPrice": 56,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.735Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 71.25,
+    "minPrice": 45,
+    "maxPrice": 100,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.752Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 115,
+    "minPrice": 90,
+    "maxPrice": 140,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.767Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 33.5,
+    "minPrice": 30,
+    "maxPrice": 40,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.784Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 48.75,
+    "minPrice": 35,
+    "maxPrice": 62,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.789Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 122.5,
+    "minPrice": 100,
+    "maxPrice": 140,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.801Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 76,
+    "minPrice": 54,
+    "maxPrice": 100,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.807Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 9.75,
+    "minPrice": 7,
+    "maxPrice": 13,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T12:12:05.818Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 96.25,
+    "minPrice": 45,
+    "maxPrice": 200,
+    "sourceCount": 2,
+    "timestamp": "2026-10-03T14:08:40.367Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 42.25,
+    "minPrice": 35,
+    "maxPrice": 50,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:48.825Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 117.5,
+    "minPrice": 100,
+    "maxPrice": 130,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:48.995Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 78.5,
+    "minPrice": 54,
+    "maxPrice": 100,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:49.229Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 10,
+    "minPrice": 8,
+    "maxPrice": 13,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:49.367Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 110,
+    "minPrice": 90,
+    "maxPrice": 130,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.131Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 43.75,
+    "minPrice": 40,
+    "maxPrice": 50,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.210Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 54.5,
+    "minPrice": 50,
+    "maxPrice": 58,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.333Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 52.5,
+    "minPrice": 52,
+    "maxPrice": 54,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.469Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 33,
+    "minPrice": 28,
+    "maxPrice": 40,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.612Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 115,
+    "minPrice": 90,
+    "maxPrice": 140,
+    "sourceCount": 2,
+    "timestamp": "2026-10-04T12:18:59.814Z"
   }
 ]
