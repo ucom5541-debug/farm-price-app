@@ -229,6 +229,16 @@ function cleanHtml(html) {
 }
 
 async function fetchText(url) {
+    try {
+    const testResponse = await fetch(url, {
+      signal: AbortSignal.timeout(12000),
+    });
+    console.log("FETCH TEST:", url, testResponse.status);
+  } catch (error) {
+    console.error("FETCH ERROR URL:", url);
+    console.error("FETCH ERROR:", error.message);
+    console.error("FETCH CAUSE:", error.cause);
+  }
   const response = await fetch(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml,application/json",
@@ -292,6 +302,7 @@ function extractSrimuangPrice(text, keyword) {
 
   return null;
 }
+console.log("SRIMUANG URL:", SRIMUANG_URL);
 
 async function getSrimuangPrice(crop) {
   try {
@@ -624,7 +635,6 @@ async function getCropMarketData(
     updatedAt:
       new Date().toISOString(),
   };
-  savePriceHistory(cropKey, result);
 return result;
 }
 
@@ -884,7 +894,7 @@ async function saveDailyPrices() {
       const data = await getCropMarketData(cropKey);
 
       // บันทึกเฉพาะเมื่อได้ครบ 2 ตลาด
-      if (data && data.sourceCount === 2) {
+      if (data && data.sourceCount >= 2) {
         savePriceHistory(cropKey, data);
 
         console.log(
@@ -930,6 +940,7 @@ function scheduleDailyPrices() {
 }
 
 scheduleDailyPrices();
+saveDailyPrices().catch(console.error);
 server.listen(PORT, () => {
   console.log("");
   console.log(
