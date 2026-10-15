@@ -1,5 +1,20 @@
 import http from "http";
 import fs from "fs";
+import { Agent } from "undici";
+import tls from "node:tls";
+
+const srimuangAgent = new Agent({
+  connect: {
+    ca: [
+      ...tls.rootCertificates,
+      fs.readFileSync(
+        new URL("../RapidSSLTLSRSACAG1.crt.pem", import.meta.url),
+        "utf8"
+      ),
+    ],
+  },
+});
+
 
 const PORT = 3001;
 const HISTORY_FILE = "./server/price-history.json";
@@ -229,17 +244,11 @@ function cleanHtml(html) {
 }
 
 async function fetchText(url) {
-    try {
-    const testResponse = await fetch(url, {
-      signal: AbortSignal.timeout(12000),
-    });
-    console.log("FETCH TEST:", url, testResponse.status);
-  } catch (error) {
-    console.error("FETCH ERROR URL:", url);
-    console.error("FETCH ERROR:", error.message);
-    console.error("FETCH CAUSE:", error.cause);
-  }
+   
   const response = await fetch(url, {
+    dispatcher: new URL(url).hostname === "www.taladsrimuang.com"
+  ? srimuangAgent
+  : undefined,
     headers: {
       Accept: "text/html,application/xhtml+xml,application/json",
       "User-Agent":
