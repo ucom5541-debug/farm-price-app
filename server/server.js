@@ -1,6 +1,6 @@
 import http from "http";
 import fs from "fs";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import tls from "node:tls";
 
 const srimuangAgent = new Agent({
@@ -244,8 +244,8 @@ function cleanHtml(html) {
 }
 
 async function fetchText(url) {
-   
-  const response = await fetch(url, {
+
+  const response = await (new URL(url).hostname === "www.taladsrimuang.com" ? undiciFetch : fetch)(url, {
     dispatcher: new URL(url).hostname === "www.taladsrimuang.com"
   ? srimuangAgent
   : undefined,
