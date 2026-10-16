@@ -341,6 +341,9 @@ async function getSrimuangPrice(crop) {
       source: SRIMUANG_URL,
     };
   } catch (error) {
+console.error("SRIMUANG ERROR:", error.message);
+console.error("SRIMUANG CAUSE:", error.cause);
+
     return {
       market: "ตลาดศรีเมือง ราชบุรี",
       available: false,
