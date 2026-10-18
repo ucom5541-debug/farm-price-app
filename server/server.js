@@ -521,6 +521,15 @@ function getSimumuangPriceFromItems(crop, allItems) {
   const found = allItems.find((item) => {
     const name = getSimumuangName(item);
 
+    if (crop.name === "ผักชี") {
+  return name.includes("ผักชีไทย");
+}
+
+if (crop.name === "แตงกวา") {
+  return name.includes("แตงกวา") &&
+         !name.includes("ญี่ปุ่น");
+}
+
     return searchKeywords.some(
       (keyword) => name.includes(keyword)
     );
