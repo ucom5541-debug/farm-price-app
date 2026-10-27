@@ -102,6 +102,46 @@ function getPrice(item) {
   return '-'
 }
 
+// ราคาในประวัติเก็บเป็น UTC แต่วันที่รายวันอ้างอิงเวลาไทย (UTC+7)
+const DAY_MS = 24 * 60 * 60 * 1000
+const THAILAND_OFFSET_MS = 7 * 60 * 60 * 1000
+
+function bangkokDayKey(timestamp) {
+  const parsed = new Date(timestamp)
+  if (!Number.isFinite(parsed.getTime())) return null
+  return new Date(parsed.getTime() + THAILAND_OFFSET_MS)
+    .toISOString()
+    .slice(0, 10)
+}
+
+function formatDayShort(dayKey) {
+  if (!dayKey) return '-'
+  return `${dayKey.slice(8, 10)}/${dayKey.slice(5, 7)}`
+}
+
+function formatDayFull(dayKey) {
+  if (!dayKey) return '-'
+  return `${formatDayShort(dayKey)}/${Number(dayKey.slice(0, 4)) + 543}`
+}
+
+function historyQuality(item) {
+  // เลือกรายการที่ราคาไม่เริ่มต้นจากศูนย์ก่อน และมีอย่างน้อย 2 ตลาด
+  return [
+    Number(item.minPrice) > 0 ? 1 : 0,
+    Number(item.sourceCount) >= 2 ? 1 : 0,
+    new Date(item.timestamp).getTime(),
+  ]
+}
+
+function isPreferredHistory(candidate, existing) {
+  const first = historyQuality(candidate)
+  const second = historyQuality(existing)
+  for (let i = 0; i < first.length; i += 1) {
+    if (first[i] !== second[i]) return first[i] > second[i]
+  }
+  return false
+}
+
 function App() {
   const [page, setPage] = useState('home')
   const [selectedCrop, setSelectedCrop] = useState(null)
@@ -114,75 +154,89 @@ function App() {
   const [error, setError] = useState('')
 
   const [history, setHistory] = useState([])
+  const [historyError, setHistoryError] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [chartDays, setChartDays] = useState(7)
- const filteredHistory = useMemo(() => {
-  const cutoffDate = new Date()
 
-  cutoffDate.setDate(cutoffDate.getDate() - chartDays + 1)
-  cutoffDate.setHours(0, 0, 0, 0)
+  // ไม่เปลี่ยนไฟล์ประวัติจริง: เลือกราคาหนึ่งรายการต่อหนึ่งวันเพื่อแสดงผลเท่านั้น
+  const dailyHistory = useMemo(() => {
+    const latestByDay = new Map()
 
-  const recentHistory = history.filter(
-    (item) => new Date(item.timestamp) >= cutoffDate
+    history.forEach((item) => {
+      const price = Number(item?.averagePrice)
+      const dayKey = bangkokDayKey(item?.timestamp)
+      if (!dayKey || !Number.isFinite(price) || price <= 0) return
+      if (selectedCrop && item?.crop !== selectedCrop) return
+
+      const candidate = { ...item, averagePrice: price, dayKey }
+      const oldItem = latestByDay.get(dayKey)
+      if (!oldItem || isPreferredHistory(candidate, oldItem)) {
+        latestByDay.set(dayKey, candidate)
+      }
+    })
+
+    return latestByDay
+  }, [history, selectedCrop])
+
+  // สร้างวันที่ครบตามช่วง 7/30/90 วัน โดยใช้ null เมื่อไม่มีราคาจริง
+  const chartData = useMemo(() => {
+    const today = bangkokDayKey(new Date())
+    const todayUTC = Date.parse(`${today}T00:00:00Z`)
+
+    return Array.from({ length: chartDays }, (_, index) => {
+      const dayKey = new Date(
+        todayUTC - (chartDays - 1 - index) * DAY_MS
+      ).toISOString().slice(0, 10)
+      const item = dailyHistory.get(dayKey)
+
+      return {
+        dayKey,
+        averagePrice: item ? item.averagePrice : null,
+        timestamp: item?.timestamp ?? null,
+        sourceCount: item?.sourceCount ?? null,
+        needsReview: Boolean(item && Number(item.minPrice) <= 0),
+      }
+    })
+  }, [dailyHistory, chartDays])
+
+  const observedDays = chartData.filter(
+    (item) => Number.isFinite(item.averagePrice)
   )
-
-  const latestByDay = new Map()
-
-  recentHistory.forEach((item) => {
-    const date = new Date(item.timestamp)
-
-    const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
-
-    const oldItem = latestByDay.get(dayKey)
-
-    if (
-      !oldItem ||
-      new Date(item.timestamp) > new Date(oldItem.timestamp)
-    ) {
-      latestByDay.set(dayKey, item)
-    }
-  })
-
-  return Array.from(latestByDay.values()).sort(
-    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
-  )
-}, [history, chartDays])
-const highestPrice =
-  filteredHistory.length > 0
-    ? Math.max(...filteredHistory.map((item) => item.averagePrice))
-    : 0
-
-    const lowestPrice =
-  filteredHistory.length > 0
-    ? Math.min(...filteredHistory.map((item) => item.averagePrice))
-    : 0
-
-    const averagePeriodPrice =
-  filteredHistory.length > 0
-    ? 
-        filteredHistory.reduce(
-          (sum, item) => sum + item.averagePrice,
-          0
-        ) / filteredHistory.length
-      
-    : 0
+  const missingDays = chartData.filter((item) => item.averagePrice === null)
+  const reviewDays = chartData.filter((item) => item.needsReview)
+  const highestPrice = observedDays.length
+    ? Math.max(...observedDays.map((item) => item.averagePrice)) : null
+  const lowestPrice = observedDays.length
+    ? Math.min(...observedDays.map((item) => item.averagePrice)) : null
+  const averagePeriodPrice = observedDays.length
+    ? observedDays.reduce((sum, item) => sum + item.averagePrice, 0) / observedDays.length
+    : null
+  const latestHistory = Array.from(dailyHistory.values())
+    .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+    .slice(-4)
+    .reverse()
 
   async function loadPriceHistory(cropKey) {
-  try {
-    const response = await fetch(
-      `http://localhost:3001/api/history?crop=${cropKey}`
-    )
-
-    if (!response.ok) {
-      throw new Error(`History Server ${response.status}`)
-    }
-
-    const result = await response.json()
-    setHistory((result.data || []).filter((item) => item.sourceCount === 2))
-  } catch (err) {
-    console.error("โหลดราคาย้อนหลังไม่สำเร็จ:", err)
+    setHistoryLoading(true)
+    setHistoryError('')
     setHistory([])
+    try {
+      const response = await fetch(
+        `http://localhost:3001/api/history?crop=${encodeURIComponent(cropKey)}`
+      )
+      if (!response.ok) throw new Error(`History Server ${response.status}`)
+
+      const result = await response.json()
+      if (!Array.isArray(result.data)) throw new Error('ข้อมูลประวัติไม่ถูกต้อง')
+      // ไม่กรอง sourceCount === 2 เพราะบางวันมีราคาจากเพียงตลาดเดียว
+      setHistory(result.data)
+    } catch (err) {
+      console.error('โหลดราคาย้อนหลังไม่สำเร็จ:', err)
+      setHistoryError(err.message || 'โหลดราคาย้อนหลังไม่สำเร็จ')
+    } finally {
+      setHistoryLoading(false)
+    }
   }
-}
   async function loadMarketData() {
     try {
       setLoading(true)
@@ -341,89 +395,100 @@ useEffect(() => {
 
           <div className="menu-card">
             <h3>📅 ราคาย้อนหลัง</h3>
-{history.length === 0 ? (
-  <p>ยังไม่มีข้อมูลราคาย้อนหลัง</p>
-) : (
-  history.slice(-4).map((item, index) => (
-    <div key={index}>
-      <strong>{item.averagePrice} บาท/กก.</strong>
-      <br />
-      <small>
-        {new Date(item.timestamp).toLocaleString("th-TH")}
-      </small>
-    </div>
-  ))
-)}
-</div>
+            {historyLoading ? (
+              <p>กำลังโหลดประวัติราคา...</p>
+            ) : historyError ? (
+              <p>โหลดประวัติไม่สำเร็จ: {historyError}</p>
+            ) : latestHistory.length === 0 ? (
+              <p>ยังไม่มีข้อมูลราคาย้อนหลัง</p>
+            ) : (
+              <>
+                <p>แสดงวันละหนึ่งรายการจากข้อมูลที่บันทึกจริง</p>
+                {latestHistory.map((item) => (
+                  <div key={item.dayKey}>
+                    <strong>{item.averagePrice} บาท/กก.</strong>
+                    <br />
+                    <small>
+                      {formatDayFull(item.dayKey)} — {item.sourceCount ?? '?'} ตลาด
+                    </small>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
           <div className="menu-card">
             <h3>📈 กราฟราคา</h3>
-
             <p className="highest-price">
-  ราคาสูงสุด {highestPrice} บาท/กก.
-</p>
-
-<p className="lowest-price">
-  ราคาต่ำสุด {lowestPrice} บาท/กก.
-</p>
-
-<p className="average-price">
-  ราคาเฉลี่ย {Number(averagePeriodPrice.toFixed(2))} บาท/กก.
-</p>
+              ราคาสูงสุด {highestPrice ?? '-'} บาท/กก.
+            </p>
+            <p className="lowest-price">
+              ราคาต่ำสุด {lowestPrice ?? '-'} บาท/กก.
+            </p>
+            <p className="average-price">
+              ราคาเฉลี่ย {averagePeriodPrice === null ? '-' : averagePeriodPrice.toFixed(2)} บาท/กก.
+            </p>
 
             <div className="chart-range-buttons">
-              <button
-  className={chartDays === 7 ? "active" : ""}
-  onClick={() => setChartDays(7)}
-  >
-    7 วัน
-  </button>
-<button
-  className={chartDays === 30 ? "active" : ""}
-  onClick={() => setChartDays(30)}
->
-    30 วัน
-  </button>
-  <button
-  className={chartDays === 90 ? "active" : ""}
-  onClick={() => setChartDays(90)}
->
-  90 วัน
-</button>
-</div>
-            {history.length === 0 ? (
-  <p>ยังไม่มีข้อมูลสำหรับกราฟ</p>
-) : (
-  <div className="line-chart">
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={filteredHistory}>
-    <CartesianGrid strokeDasharray="3 3" />
-    <XAxis
-      dataKey="timestamp"
-      tickFormatter={(value) =>
-        new Date(value).toLocaleDateString("th-TH", {
-          day: "2-digit",
-          month: "2-digit",
-        })
-      }
-    />
-    <YAxis domain={["dataMin - 10", "dataMax + 10"]} />
-    <Tooltip
-      labelFormatter={(value) =>
-        new Date(value).toLocaleDateString("th-TH")
-      }
-      formatter={(value) => [`${value} บาท/กก.`, "ราคาเฉลี่ย"]}
-    />
-    <Line
-      type="monotone"
-      dataKey="averagePrice"
-      stroke="#4f8f83"
-      strokeWidth={3}
-      dot={{ r: 5 }}
-    />
-  </LineChart>
-</ResponsiveContainer>
-</div>
-)}
+              {[7, 30, 90].map((days) => (
+                <button
+                  key={days}
+                  className={chartDays === days ? 'active' : ''}
+                  onClick={() => setChartDays(days)}
+                >
+                  {days} วัน
+                </button>
+              ))}
+            </div>
+
+            <p>
+              มีราคาจริง {observedDays.length} วัน จาก {chartDays} วัน
+              {missingDays.length > 0 && ` · ไม่มีข้อมูล ${missingDays.length} วัน`}
+            </p>
+            {chartDays === 7 && missingDays.length > 0 && (
+              <p>วันที่ไม่มีข้อมูล: {missingDays.map((item) => formatDayShort(item.dayKey)).join(', ')}</p>
+            )}
+            {reviewDays.length > 0 && (
+              <p>⚠️ มี {reviewDays.length} วันซึ่งข้อมูลต้นทางระบุราคาต่ำสุดเป็น 0 ควรตรวจสอบก่อนวิเคราะห์</p>
+            )}
+            <p>วันที่ไม่มีข้อมูลจะแสดงเป็นช่องว่าง ไม่สร้างราคาขึ้นมาแทน</p>
+
+            {historyLoading ? (
+              <p>กำลังโหลดกราฟราคา...</p>
+            ) : historyError ? (
+              <p>โหลดกราฟไม่สำเร็จ: {historyError}</p>
+            ) : observedDays.length === 0 ? (
+              <p>ยังไม่มีข้อมูลราคาในช่วง {chartDays} วันที่เลือก</p>
+            ) : (
+              <div className="line-chart">
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="dayKey"
+                      tickFormatter={formatDayShort}
+                      minTickGap={20}
+                    />
+                    <YAxis domain={['dataMin - 10', 'dataMax + 10']} />
+                    <Tooltip
+                      filterNull={false}
+                      labelFormatter={formatDayFull}
+                      formatter={(value) => [
+                        value == null ? 'ไม่มีข้อมูล' : `${value} บาท/กก.`,
+                        'ราคาเฉลี่ย',
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="averagePrice"
+                      connectNulls={false}
+                      stroke="#4f8f83"
+                      strokeWidth={3}
+                      dot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         </main>
       </div>
