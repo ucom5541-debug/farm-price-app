@@ -1,0 +1,52 @@
+name: Daily Farm Market Prices
+
+on:
+  schedule:
+    # 08:17 Thailand = 01:17 UTC (GitHub schedule can be delayed)
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: farm-market-daily
+  cancel-in-progress: false
+
+jobs:
+  save-daily-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate JavaScript
+        run: node --check server/server.js
+
+      - name: Update Bangkok date market prices once
+        run: node server/server.js --save-once
+
+      - name: Commit new history to default branch
+        shell: bash
+        run: |
+          if git diff --quiet -- server/price-history.json; then
+            echo "No changes to price-history.json"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/price-history.json
+          git commit -m "data: daily market prices $(TZ=Asia/Bangkok date +%F)"
+          git push

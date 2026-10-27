@@ -16,46 +16,43 @@ const srimuangAgent = new Agent({
 });
 
 
-const PORT = 3001;
-const HISTORY_FILE = "./server/price-history.json";
+const PORT = Number(process.env.PORT || 3001);
+// Always use the history file next to this server.js, regardless of cwd.
+const HISTORY_FILE = new URL("./price-history.json", import.meta.url);
 let priceHistory = [];
 
+// Do not quietly overwrite history if the JSON file is absent or damaged.
+if (!fs.existsSync(HISTORY_FILE)) {
+  throw new Error("ไม่พบ server/price-history.json กรุณากู้คืนจากไฟล์สำรองก่อน");
+}
 try {
-  if (fs.existsSync(HISTORY_FILE)) {
-    const savedData = fs.readFileSync(HISTORY_FILE, "utf8");
-    priceHistory = JSON.parse(savedData);
-
-    console.log("โหลดประวัติราคา:", priceHistory.length, "รายการ");
+  priceHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+  if (!Array.isArray(priceHistory)) {
+    throw new Error("รูปแบบข้อมูลประวัติราคาต้องเป็น Array");
   }
+  console.log("โหลดประวัติราคา:", priceHistory.length, "รายการ");
 } catch (error) {
-  console.error("โหลดประวัติราคาไม่สำเร็จ:", error);
-  priceHistory = [];
+  console.error("ไม่สามารถอ่านประวัติราคาได้ หยุดเพื่อป้องกันข้อมูลสูญหาย:", error);
+  throw error;
 }
+
+function bangkokDate(timestamp = Date.now()) {
+  const milliseconds = new Date(timestamp).getTime();
+  if (!Number.isFinite(milliseconds)) return null;
+  return new Date(milliseconds + 7 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function savePriceHistory(cropKey, data) {
-  if (!data || !Number.isFinite(data.averagePrice)) {
-    return;
-  }
+  if (!data || !Number.isFinite(data.averagePrice)) return false;
 
-  // หารายการล่าสุดของพืชชนิดนี้
-  const lastItem = [...priceHistory]
-    .reverse()
-    .find((item) => item.crop === cropKey);
-
-  // ถ้าราคาเหมือนรายการล่าสุด ไม่บันทึกซ้ำ
-const today = new Date().toISOString().slice(0, 10);
-
-const lastDate = lastItem
-  ? new Date(lastItem.timestamp).toISOString().slice(0, 10)
-  : null;
-
-if (
-  lastItem &&
-  lastItem.averagePrice === data.averagePrice &&
-  lastDate === today
-) {
-  return;
-}
-  priceHistory.push({
+  // Find any existing item for this crop and Bangkok calendar date.
+  const today = bangkokDate();
+  const existingIndex = priceHistory.findLastIndex(
+    (item) => item.crop === cropKey && bangkokDate(item.timestamp) === today
+  );
+  const updated = {
     crop: cropKey,
     name: data.name,
     averagePrice: data.averagePrice,
@@ -63,21 +60,21 @@ if (
     maxPrice: data.maxPrice,
     sourceCount: data.sourceCount,
     timestamp: new Date().toISOString(),
-  });
+  };
 
-  // เก็บประวัติสูงสุด 5000 รายการ
-  if (priceHistory.length > 5000) {
-    priceHistory.shift();
+  if (existingIndex >= 0) {
+    // Update today's snapshot in place; do not create another entry.
+    priceHistory[existingIndex] = { ...priceHistory[existingIndex], ...updated };
+  } else {
+    priceHistory.push(updated);
   }
-  try {
-  fs.writeFileSync(
-    HISTORY_FILE,
-    JSON.stringify(priceHistory, null, 2),
-    "utf8"
-  );
-} catch (error) {
-  console.error("บันทึกประวัติราคาไม่สำเร็จ:", error);
-}
+
+  // Preserve old history records and retain the existing 5000-item cap.
+  while (priceHistory.length > 5000) priceHistory.shift();
+
+  // A failed write must be reported to GitHub Actions (not a false success).
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(priceHistory, null, 2), "utf8");
+  return true;
 }
 // ==========================================
 // พืชที่เราติดตาม
@@ -798,18 +795,13 @@ if (url.pathname === "/api/history") {
     })
   );
 }
+// Public GET endpoints must never trigger a history write.
 if (url.pathname === "/api/save-daily-prices") {
-saveDailyPrices().catch(console.error);
-  res.writeHead(200, {
-    "Content-Type": "application/json; charset=utf-8",
-  });
-
-  return res.end(
-    JSON.stringify({
-      status: "ok",
-      message: "บันทึกราคารายวันเรียบร้อย",
-    })
-  );
+  res.writeHead(403);
+  return res.end(JSON.stringify({
+    status: "error",
+    message: "ปิดการสั่งบันทึกผ่าน HTTP แล้ว: ใช้ GitHub Actions หรือ --save-once",
+  }));
 }
 // -----------------------
     // Compatibility
@@ -908,73 +900,50 @@ saveDailyPrices().catch(console.error);
 );
 
 async function saveDailyPrices() {
-  console.log("เริ่มบันทึกราคาอัตโนมัติ...");
+  console.log("เริ่มบันทึกราคา (เวลาไทย):", bangkokDate());
+  let saved = 0;
+  let skipped = 0;
 
   for (const cropKey of Object.keys(CROPS)) {
     try {
       const data = await getCropMarketData(cropKey);
-
-      // บันทึกเฉพาะเมื่อได้ครบ 2 ตลาด
-      if (data && data.sourceCount >= 2) {
-        savePriceHistory(cropKey, data);
-
-        console.log(
-          `บันทึก ${data.name}: ${data.averagePrice} บาท/กก.`
-        );
+      // Save with at least one verified market; sourceCount records reliability.
+      if (data && data.sourceCount >= 1 && Number.isFinite(data.averagePrice)) {
+        if (savePriceHistory(cropKey, data)) {
+          saved += 1;
+          console.log(`บันทึก ${data.name}: ${data.averagePrice} บาท/กก. (${data.sourceCount} ตลาด)`);
+        }
       } else {
-        console.log(
-          `ข้าม ${cropKey}: ข้อมูลยังไม่ครบ 2 ตลาด`
-        );
+        skipped += 1;
+        console.warn(`ไม่มีข้อมูลราคาให้บันทึก: ${cropKey}`);
       }
     } catch (error) {
-      console.error(
-        `บันทึก ${cropKey} ไม่สำเร็จ:`,
-        error.message
-      );
+      skipped += 1;
+      console.error(`บันทึก ${cropKey} ไม่สำเร็จ:`, error);
     }
   }
-
-  console.log("บันทึกราคาอัตโนมัติเสร็จแล้ว");
+  console.log(`เสร็จแล้ว: บันทึก ${saved} รายการ, ข้าม ${skipped} รายการ`);
+  return { saved, skipped };
 }
 
-function scheduleDailyPrices() {
-  const now = new Date();
-
-  const nextRun = new Date();
-  nextRun.setHours(7, 0, 0, 0);
-
-  if (nextRun <= now) {
-    nextRun.setDate(nextRun.getDate() + 1);
+// GitHub Actions runs this command once per day and commits the resulting file.
+// Render serves history from the repository snapshot and does NOT modify it.
+if (process.argv.includes("--save-once")) {
+  try {
+    const result = await saveDailyPrices();
+    if (result.saved === 0) {
+      console.error("ไม่มีราคาที่บันทึกได้เลย: ยกเลิกงานเพื่อให้ GitHub Actions แจ้งความล้มเหลว");
+      process.exitCode = 1;
+    }
+  } catch (error) {
+    console.error("บันทึกรายวันล้มเหลว:", error);
+    process.exitCode = 1;
+  } finally {
+    await srimuangAgent.close();
   }
-
-  const delay = nextRun.getTime() - now.getTime();
-
-  console.log(
-    "บันทึกราคาอัตโนมัติครั้งถัดไป:",
-    nextRun.toLocaleString("th-TH")
-  );
-
-  setTimeout(async () => {
-    await saveDailyPrices();
-    scheduleDailyPrices();
-  }, delay);
+} else {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Farm Dashboard Server running on http://localhost:${PORT}`);
+    console.log("History persistence: read-only on web server; GitHub Actions saves daily prices.");
+  });
 }
-
-scheduleDailyPrices();
-saveDailyPrices().catch(console.error);
-server.listen(PORT, () => {
-  console.log("");
-  console.log(
-    "======================================"
-  );
-  console.log(
-    " Farm Dashboard Multi-Market Server"
-  );
-  console.log(
-    ` http://localhost:${PORT}`
-  );
-  console.log(
-    "======================================"
-  );
-  console.log("");
-});
