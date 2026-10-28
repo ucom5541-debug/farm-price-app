@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import './App.css'
 
-const API_URL = 'http://localhost:3001/api/simumuang'
+// ใช้ Backend ในเครื่องระหว่างพัฒนา และใช้ Render เมื่อเปิดเว็บออนไลน์
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV
+    ? 'http://localhost:3001'
+    : 'https://farm-price-app.onrender.com')
+).replace(/\/+$/, '')
+
+const API_URL = `${API_BASE_URL}/api/simumuang`
 
 const CROPS = {
   shallot: {
@@ -222,7 +230,7 @@ function App() {
     setHistory([])
     try {
       const response = await fetch(
-        `http://localhost:3001/api/history?crop=${encodeURIComponent(cropKey)}`
+        `${API_BASE_URL}/api/history?crop=${encodeURIComponent(cropKey)}`
       )
       if (!response.ok) throw new Error(`History Server ${response.status}`)
 
