@@ -5794,5 +5794,95 @@
     "maxPrice": 23,
     "sourceCount": 2,
     "timestamp": "2026-10-28T06:51:16.945Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 162.5,
+    "minPrice": 120,
+    "maxPrice": 190,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:42.745Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 61.5,
+    "minPrice": 56,
+    "maxPrice": 68,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:44.076Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 34,
+    "minPrice": 32,
+    "maxPrice": 36,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:44.362Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 52.5,
+    "minPrice": 45,
+    "maxPrice": 60,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:44.658Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 130,
+    "minPrice": 100,
+    "maxPrice": 150,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:44.945Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 23,
+    "minPrice": 20,
+    "maxPrice": 25,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:45.245Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 28,
+    "minPrice": 20,
+    "maxPrice": 35,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:45.539Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 115,
+    "minPrice": 100,
+    "maxPrice": 130,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:45.846Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 16,
+    "minPrice": 14,
+    "maxPrice": 20,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:46.150Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 12.25,
+    "minPrice": 8,
+    "maxPrice": 15,
+    "sourceCount": 2,
+    "timestamp": "2026-10-29T07:02:46.460Z"
   }
 ]
