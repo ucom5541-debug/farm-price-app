@@ -5974,5 +5974,95 @@
     "maxPrice": 20,
     "sourceCount": 2,
     "timestamp": "2026-10-30T07:04:37.314Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 112.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:04.525Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 46,
+    "minPrice": 38,
+    "maxPrice": 54,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:05.681Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 27.5,
+    "minPrice": 24,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:05.935Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 42.5,
+    "minPrice": 40,
+    "maxPrice": 45,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:06.193Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 110,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:06.443Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 27,
+    "minPrice": 25,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:06.699Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 34.25,
+    "minPrice": 30,
+    "maxPrice": 40,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:06.959Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 112.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:07.214Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 13,
+    "minPrice": 12,
+    "maxPrice": 14,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:07.486Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 12.25,
+    "minPrice": 8,
+    "maxPrice": 15,
+    "sourceCount": 2,
+    "timestamp": "2026-10-31T06:58:07.750Z"
   }
 ]
