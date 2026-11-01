@@ -6064,5 +6064,95 @@
     "maxPrice": 15,
     "sourceCount": 2,
     "timestamp": "2026-10-31T06:58:07.750Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 117.5,
+    "minPrice": 100,
+    "maxPrice": 130,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:18.991Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 47.5,
+    "minPrice": 40,
+    "maxPrice": 54,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:20.130Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 25,
+    "minPrice": 20,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:20.375Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 43.5,
+    "minPrice": 42,
+    "maxPrice": 45,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:20.629Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 107.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:20.880Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 26.5,
+    "minPrice": 24,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:21.134Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 35.75,
+    "minPrice": 32,
+    "maxPrice": 40,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:21.393Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 107.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:21.645Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 13,
+    "minPrice": 12,
+    "maxPrice": 14,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:21.904Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 12.5,
+    "minPrice": 10,
+    "maxPrice": 15,
+    "sourceCount": 2,
+    "timestamp": "2026-11-01T07:30:22.153Z"
   }
 ]
