@@ -6244,5 +6244,95 @@
     "maxPrice": 56,
     "sourceCount": 2,
     "timestamp": "2026-11-02T07:39:29.247Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 147.5,
+    "minPrice": 130,
+    "maxPrice": 170,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:05.692Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 42.5,
+    "minPrice": 36,
+    "maxPrice": 48,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:06.772Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 20,
+    "minPrice": 16,
+    "maxPrice": 24,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:07.034Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 40.75,
+    "minPrice": 38,
+    "maxPrice": 45,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:07.290Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 127.5,
+    "minPrice": 100,
+    "maxPrice": 150,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:07.548Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 27,
+    "minPrice": 25,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:07.803Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 27.25,
+    "minPrice": 24,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:08.062Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 107.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:08.328Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 22.5,
+    "minPrice": 12,
+    "maxPrice": 32,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:08.590Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 12.5,
+    "minPrice": 10,
+    "maxPrice": 16,
+    "sourceCount": 2,
+    "timestamp": "2026-11-03T07:54:08.855Z"
   }
 ]
