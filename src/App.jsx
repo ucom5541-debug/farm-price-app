@@ -12,6 +12,11 @@ const API_BASE_URL = (
 
 const API_URL = `${API_BASE_URL}/api/simumuang`
 
+function formatMarketTime(value) {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return 'ไม่ทราบเวลา'
+  return new Date(value).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })
+}
+
 const CROPS = {
   shallot: {
     title: 'หอมแบ่ง',
@@ -260,7 +265,13 @@ function App() {
       console.log("DASHBOARD API DATA:", data)
 
       setSimumuangData(data)
-      setServerStatus('เชื่อมต่อสำเร็จ')
+      const received = data?.data?.data || []
+      const usable = received.filter((item) => item.sourceCount > 0 && Number.isFinite(item.averagePrice))
+      setServerStatus(!usable.length
+        ? 'รับข้อมูลแล้ว แต่ยังไม่มีราคาที่ผ่านเกณฑ์'
+        : usable.every((item) => item.priceStatus === 'current')
+          ? 'รับข้อมูลแล้ว มีราคาปัจจุบันที่ผ่านการตรวจสอบ'
+          : 'รับข้อมูลแล้ว มีราคาเปรียบเทียบที่ยังยืนยันเวลาราคาไม่ได้')
     } catch (err) {
       console.error(err)
 
@@ -363,6 +374,9 @@ useEffect(() => {
               >
                 <h3>{getThaiName(item)}</h3>                
 <p>ราคากลางหลายตลาด</p>
+<p>{item.priceStatus === 'current' ? 'ราคาปัจจุบันที่ผ่านการตรวจสอบ'
+  : item.priceStatus === 'unverified_freshness' ? 'ราคาเปรียบเทียบ — ไม่สามารถยืนยันเวลาราคาครบทุกตลาด'
+  : 'ยังไม่มีราคาที่ใช้คำนวณได้'}</p>
 
 <h2>
   {item.averagePrice ?? getPrice(item)}
@@ -374,18 +388,58 @@ useEffect(() => {
   ใช้ข้อมูล {item.sourceCount ?? 0} ตลาด
 </p>
 <div className="market-list">
-  {Array.isArray(item.markets) &&
-    item.markets
-      .filter((market) => market.available)
-      .map((market, index) => (
-        <p key={`${market.market}-${index}`}>
-          {market.market}:{" "}
-          {market.min === market.max
-            ? market.min
-            : `${market.min} - ${market.max}`}{" "}
-          บาท/กก.
+  {Array.isArray(item.markets) && item.markets.map((market, marketIndex) => {
+    const sizeLabels = { small: 'เล็ก', medium: 'กลาง', large: 'ใหญ่' }
+    const statusLabels = {
+      invalid_range: 'ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด',
+      incomplete_range: 'ช่วงราคาไม่ครบ',
+      missing_price: 'ไม่มีราคา',
+      invalid_value: 'ข้อมูลราคาไม่ถูกต้อง',
+    }
+    return (
+      <div key={`${market.market}-${marketIndex}`}>
+        <p>
+          {market.market}:{' '}
+          {market.available ? (
+            <>
+              {market.productName && `${market.productName} `}
+              {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize} `}
+              {market.min === market.max ? market.min : `${market.min} - ${market.max}`} บาท/กก.
+            </>
+          ) : (market.reason || 'ยังไม่มีราคาที่ผ่านการตรวจสอบ')}
         </p>
-      ))}
+        {market.available && (
+          <p>{market.verifiedCurrent ? 'ราคาปัจจุบันที่ผ่านการตรวจสอบ' : 'ไม่สามารถยืนยันเวลาราคา — ใช้เพื่อเปรียบเทียบ'}</p>
+        )}
+        {market.freshness?.status === 'stale' && market.quality?.status === 'valid' && (
+          <p>ราคาเก่า: {market.min} - {market.max} {market.unit} (ไม่ใช้คำนวณราคาปัจจุบัน)</p>
+        )}
+        <p>เวลาราคาต้นทาง: {formatMarketTime(market.sourceUpdatedAt)}
+          {' · '}เวลาดึงข้อมูล: {formatMarketTime(market.fetchedAt)}</p>
+        {market.action_date && <p>เวลาที่ต้นทางระบุเพิ่มเติม: {formatMarketTime(market.action_date)}</p>}
+        {market.candidates?.length > 0 && (
+          <details>
+            <summary>ตรวจสอบสินค้าและขนาด</summary>
+            {market.candidates.map((candidate) => (
+              <div key={candidate.productId}>
+                <p>{candidate.productName} — หน่วย: {candidate.unit?.th || 'ไม่ทราบหน่วย'}
+                  {candidate.reasons?.includes('unsupported_unit') && ' (ใช้คำนวณบาท/กก. ไม่ได้)'}
+                </p>
+                {candidate.sizes.map((range) => (
+                  <p key={range.size}>
+                    ขนาด{sizeLabels[range.size] || range.size}: {' '}
+                    {range.status === 'valid'
+                      ? `${range.min} - ${range.max} บาท/${candidate.unit?.th || 'ไม่ทราบหน่วย'}`
+                      : (statusLabels[range.status] || 'ข้อมูลราคาไม่ถูกต้อง')}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </details>
+        )}
+      </div>
+    )
+  })}
 </div>
               </div>
             ))}
