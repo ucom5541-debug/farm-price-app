@@ -498,7 +498,7 @@ return getSimumuangPriceFromItems(crop, loadedItems);
 
 function getSimumuangPriceFromItems(crop, allItems) {
   const fallbackKeywords = {
-    "หอมแบ่ง": ["ต้นหอม", "หอมแบ่ง", "หอม"],
+    "หอมแบ่ง": ["ต้นหอม", "หอมแบ่ง"],
     "คะน้า": ["คะน้า"],
     "กวางตุ้ง": ["กวางตุ้ง"],
     "พริก": ["พริก"],
@@ -510,27 +510,34 @@ function getSimumuangPriceFromItems(crop, allItems) {
     "กะหล่ำปลี": ["กะหล่ำ", "กะหล่ำปลี"],
   };
 
-  const searchKeywords = [
-    ...(crop.simumuangKeywords || []),
+  const normalizeName = (value) =>
+    typeof value === "string" ? value.normalize("NFC").trim() : "";
+  const searchKeywords = [...new Set([
+    ...(crop.simummuangKeywords || []),
     ...(fallbackKeywords[crop.name] || []),
-  ];
+  ].map(normalizeName).filter(Boolean))];
 
-  const found = allItems.find((item) => {
-    const name = getSimumuangName(item);
+  const candidates = allItems.flatMap((item, index) => {
+    const name = normalizeName(getSimumuangName(item));
 
-    if (crop.name === "ผักชี") {
-  return name.includes("ผักชีไทย");
-}
+    // Preserve the existing exclusions for different product varieties.
+    if (crop.name === "ผักชี" && !name.includes("ผักชีไทย")) return [];
+    if (crop.name === "แตงกวา" && name.includes("ญี่ปุ่น")) return [];
+    if (crop.name === "หอมแบ่ง" && name.includes("หอมแดง")) return [];
 
-if (crop.name === "แตงกวา") {
-  return name.includes("แตงกวา") &&
-         !name.includes("ญี่ปุ่น");
-}
+    const matchingKeywords = searchKeywords.filter((keyword) => name.includes(keyword));
+    if (!matchingKeywords.length) return [];
 
-    return searchKeywords.some(
-      (keyword) => name.includes(keyword)
-    );
+    // Prefer specific names; exact matches win when specificity is equal.
+    const score = Math.max(...matchingKeywords.map(
+      (keyword) => keyword.length * 2 + Number(name === keyword)
+    ));
+    return [{ item, index, score, price: getSimumuangRange(item) }];
   });
+  const selected = candidates
+    .filter((candidate) => candidate.price !== null)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0];
+  const found = selected?.item;
 
   console.log(
   "SIMUMUANG MATCH:",
@@ -544,7 +551,7 @@ console.log(
   found?.price
 );
 
-  if (!found) {
+  if (!candidates.length) {
     return {
       market: "ตลาดสี่มุมเมือง",
       available: false,
@@ -552,7 +559,7 @@ console.log(
     };
   }
 
-  const price = getSimumuangRange(found);
+  const price = selected?.price;
 
   if (!price) {
     return {
