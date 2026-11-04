@@ -379,19 +379,14 @@ function getSimumuangRange(item) {
   const values = [];
 
   for (const group of groups) {
-   if (
-  Number.isFinite(Number(group.min)) &&
-  Number(group.min) > 0
-) {
-  values.push(Number(group.min));
-}
+    for (const rawValue of [group.min, group.max]) {
+      // Only numbers and non-empty numeric strings are supported prices.
+      if (typeof rawValue !== "number" && typeof rawValue !== "string") continue;
+      if (typeof rawValue === "string" && rawValue.trim() === "") continue;
 
-   if (
-  Number.isFinite(Number(group.max)) &&
-  Number(group.max) > 0
-) {
-  values.push(Number(group.max));
-}
+      const value = Number(rawValue);
+      if (Number.isFinite(value) && value > 0) values.push(value);
+    }
   }
 
   if (!values.length) return null;

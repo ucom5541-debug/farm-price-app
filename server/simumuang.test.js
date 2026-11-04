@@ -95,3 +95,42 @@ test('empty or unrelated items return product-not-found', () => {
     assert.equal(select(CROPS.kale, items).reason, 'วันนี้ API ไม่พบสินค้ารายการนี้');
   }
 });
+
+for (const [label, value] of [
+  ['true', true], ['false', false], ['null', null],
+  ['empty string', ''], ['whitespace', ' \t\n '],
+]) {
+  test(`reject price value: ${label}`, () => {
+    for (const size of ['small', 'medium', 'large']) {
+      const product = item('คะน้า', { [size]: { min: value, max: value } });
+      assert.equal(range(product), null);
+      assert.equal(select(CROPS.kale, [product]).available, false);
+      assert.equal(select(CROPS.kale, [product, item('คะน้า')]).mid, 25);
+      // A rejected endpoint must not hide a valid endpoint.
+      for (const endpoints of [{ min: value, max: 30 }, { min: 30, max: value }]) {
+        const result = range(item('คะน้า', { [size]: endpoints }));
+        assert.equal(result.min, 30);
+        assert.equal(result.max, 30);
+      }
+    }
+  });
+}
+
+for (const value of [1, 20.5, '1', '20.50', ' 20.50 ']) {
+  test(`accept existing numeric price: ${JSON.stringify(value)}`, () => {
+    for (const size of ['small', 'medium', 'large']) {
+      const product = item('คะน้า', { [size]: { min: value, max: value } });
+      const result = range(product);
+      assert.equal(result.min, Number(value));
+      assert.equal(result.max, Number(value));
+      assert.equal(select(CROPS.kale, [product]).available, true);
+      assert.equal(select(CROPS.kale, [product]).mid, Number(value));
+    }
+  });
+}
+
+test('do not coerce arrays or objects into prices', () => {
+  for (const value of [[20], { valueOf: () => 20 }]) {
+    assert.equal(range(item('คะน้า', { small: { min: value, max: value } })), null);
+  }
+});
