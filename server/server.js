@@ -89,6 +89,9 @@ function savePriceHistory(cropKey, data) {
 const CROPS = {
   shallot: {
     name: "หอมแบ่ง",
+    simummuangProductId: "698aaceeee6cbda61dfbd207",
+    simummuangProductName: "ต้นหอม",
+    simummuangSize: "large",
     srimuangKeyword: "ต้นหอม",
     talaadthaiKeyword: "ต้นหอม",
     talaadthaiUrl:
@@ -98,6 +101,9 @@ const CROPS = {
 
   kale: {
     name: "คะน้า",
+    simummuangProductId: "698aacecee6cbda61dfbd1c3",
+    simummuangProductName: "ต้นคะน้า",
+    simummuangSize: "large",
     srimuangKeyword: "คะน้าต้น",
     talaadthaiKeyword: "คะน้าต้น",
     talaadthaiUrl:
@@ -107,6 +113,9 @@ const CROPS = {
 
   pakchoi: {
     name: "กวางตุ้ง",
+    simummuangProductId: "698aacedee6cbda61dfbd1e5",
+    simummuangProductName: "กวางตุ้งใบ",
+    simummuangSize: "large",
     srimuangKeyword: "ผักกวางตุ้งธรรมดา",
     talaadthaiKeyword: "กวางตุ้งดอก",
     talaadthaiUrl:
@@ -116,6 +125,9 @@ const CROPS = {
 
   chili: {
     name: "พริก",
+    simummuangProductId: "698aacebee6cbda61dfbd16f",
+    simummuangProductName: "พริกจินดาแดง",
+    simummuangSize: "large",
     srimuangKeyword: "พริกจินดาแดง",
     talaadthaiKeyword: "พริกขี้หนูแดง",
     talaadthaiUrl:
@@ -129,6 +141,9 @@ const CROPS = {
 
     coriander: {
     name: "ผักชี",
+    simummuangProductId: "698aaceeee6cbda61dfbd20e",
+    simummuangProductName: "ผักชีไทย",
+    simummuangSize: "large",
     srimuangKeyword: "ผักชี",
     talaadthaiKeyword: "ผักชีไทย",
     talaadthaiUrl:
@@ -137,6 +152,9 @@ const CROPS = {
   },
     cucumber: {
     name: "แตงกวา",
+    simummuangProductId: "6989c1bd2f44a006e423550e",
+    simummuangProductName: "แตงกวา",
+    simummuangSize: "large",
     srimuangKeyword: "แตงกวา",
     talaadthaiKeyword: "แตงกวาอ่อน",
     talaadthaiUrl:
@@ -146,6 +164,9 @@ const CROPS = {
 
   longbean: {
     name: "ถั่วฝักยาว",
+    simummuangProductId: "6989c1be2f44a006e423552f",
+    simummuangProductName: "ถั่วฝักยาว เนื้อ",
+    simummuangSize: "large",
     srimuangKeyword: "ถั่วฝักยาว",
     talaadthaiKeyword: "ถั่วฝักยาว",
     talaadthaiUrl:
@@ -155,6 +176,9 @@ const CROPS = {
 
   celery: {
     name: "ขึ้นฉ่าย",
+    simummuangProductId: "698aaceeee6cbda61dfbd22a",
+    simummuangProductName: "ขึ้นฉ่าย/ตั้งโอ๋ ดิน",
+    simummuangSize: "large",
     srimuangKeyword: "ขึ้นฉ่าย",
     talaadthaiKeyword: "คึ่นช่าย",
     talaadthaiUrl:
@@ -169,6 +193,9 @@ const CROPS = {
 
   morningglory: {
     name: "ผักบุ้งจีน",
+    simummuangProductId: "698aacf1ee6cbda61dfbd2b8",
+    simummuangProductName: "ผักบุ้งจีน",
+    simummuangSize: "large",
     srimuangKeyword: "ผักบุ้งจีน",
     talaadthaiKeyword: "ผักบุ้งจีน",
     talaadthaiUrl:
@@ -178,6 +205,9 @@ const CROPS = {
 
   cabbage: {
     name: "กะหล่ำปลี",
+    simummuangProductId: "698aacefee6cbda61dfbd246",
+    simummuangProductName: "กะหล่ำปลีเขียว",
+    simummuangSize: "large",
     srimuangKeyword: "กะหล่ำปลี",
     talaadthaiKeyword: "กะหล่ำปลี",
     talaadthaiUrl:
@@ -369,7 +399,8 @@ console.error("SRIMUANG CAUSE:", error.cause);
 // ==========================================
 
 // Verified identity candidates from the read-only API audit on 2026-11-04.
-// These are proposals, not confirmed primary products or size preferences.
+// Confirmed primaries and large size are configured in CROPS. Other entries remain
+// identity-checked alternatives for a future explicit product selector, never fallbacks.
 const SIMUMUANG_PRODUCTS = {
   "หอมแบ่ง": [
     {
@@ -710,7 +741,9 @@ async function getSimumuangPrice(crop) {
       fetchedAt: snapshot.fetchedAt, dataCompleteness: snapshot.dataCompleteness });
   } catch (error) {
     return { market: "ตลาดสี่มุมเมือง", available: false, status: "incomplete_data",
-      reason: "ตลาดโหลดข้อมูลไม่สำเร็จ: " + error.message, fetchedAt: new Date(Date.now()).toISOString(),
+      reason: "ตลาดโหลดข้อมูลไม่สำเร็จ: " + error.message,
+      productId: crop.simummuangProductId ?? null, productName: crop.simummuangProductName ?? null,
+      selectedSize: crop.simummuangSize ?? null, fetchedAt: new Date(Date.now()).toISOString(),
       dataCompleteness: error.dataCompleteness ?? { complete: false } };
   }
 }
@@ -731,23 +764,41 @@ function getSimumuangPriceFromItems(crop, allItems) {
         ...sizes.filter((range) => range.status !== "valid")
           .map((range) => `${range.size}:${range.status}`)] }];
   });
-  const base = { market: "ตลาดสี่มุมเมือง", available: false, candidates, proposals };
-  const reject = (status, reason) => ({ ...base, status, reason });
-  if (!candidates.length) return reject("product_not_found", "ไม่พบรหัสและชื่อสินค้าที่ตรวจสอบแล้ว");
+  const selected = candidates.find((item) => item.productId === crop.simummuangProductId);
+  const configuredName = crop.simummuangProductName ??
+    proposals.find((item) => item.id === crop.simummuangProductId)?.name ?? null;
+  const base = { market: "ตลาดสี่มุมเมือง", available: false, candidates, proposals,
+    productId: crop.simummuangProductId ?? null, productName: configuredName,
+    selectedSize: crop.simummuangSize ?? null,
+    sourceUpdatedAt: selected?.updatedAt ?? null, action_date: selected?.action_date ?? null,
+    freshness: selected ? inspectPriceFreshness(selected.updatedAt) : null,
+    isShow: selected?.isShow ?? null, sourceUnit: selected?.unit ?? null };
+  const reject = (status, reason, extra = {}) => ({ ...base, status, reason, ...extra });
+  const observedPrimary = allItems.find((item) => item?._id === crop.simummuangProductId);
+  if (observedPrimary && getSimumuangName(observedPrimary) !== configuredName) {
+    return reject("product_identity_mismatch", "ชื่อสินค้าหลักไม่ตรงกับรหัสที่ยืนยัน ต้องตรวจสอบข้อมูล");
+  }
   if (new Set(candidates.map((item) => item.productId)).size !== candidates.length) {
     return reject("duplicate_product", "รหัสสินค้าซ้ำ ต้องตรวจสอบข้อมูล");
   }
-  // A primary product must be explicitly confirmed; no price-based substitution.
-  const selected = candidates.find((item) => item.productId === crop.simummuangProductId);
   if (!selected) return reject(crop.simummuangProductId ? "selected_product_not_found" :
-    "selection_required", crop.simummuangProductId ? "ไม่พบสินค้าหลักที่ยืนยันไว้ ห้ามใช้สินค้าอื่นแทน" :
-    "รอยืนยันรหัสสินค้าหลัก");
+    candidates.length ? "selection_required" : "product_not_found",
+    crop.simummuangProductId ? "ไม่พบรหัสสินค้าหลักที่ยืนยันไว้ ห้ามใช้สินค้าอื่นแทน" :
+    candidates.length ? "รอยืนยันรหัสสินค้าหลัก" : "ไม่พบรหัสและชื่อสินค้าที่ตรวจสอบแล้ว");
   if (!isSimumuangKg(selected.unit)) return reject("unsupported_unit", "หน่วยสินค้าไม่ใช่กิโลกรัม");
   const validSizes = selected.sizes.filter((range) => range.status === "valid");
   const range = crop.simummuangSize ? validSizes.find((entry) => entry.size === crop.simummuangSize) :
     validSizes.length === 1 ? validSizes[0] : null;
   if (!range) {
-    if (crop.simummuangSize) return reject("selected_size_unavailable", "ขนาดที่เลือกใช้ไม่ได้: ไม่มีช่วงราคาที่ผ่านการตรวจสอบ");
+    if (crop.simummuangSize) {
+      const inspected = selected.sizes.find((entry) => entry.size === crop.simummuangSize);
+      const status = inspected?.status ?? "invalid_value";
+      const messages = { invalid_range: "ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด",
+        incomplete_range: "ช่วงราคาไม่ครบ มีราคาศูนย์ด้านเดียว", missing_price: "ไม่มีราคา",
+        invalid_value: "ข้อมูลราคาไม่ถูกต้อง" };
+      return reject("selected_size_unavailable", "ขนาดที่เลือกใช้ไม่ได้: " + (messages[status] ?? "ไม่มีช่วงราคาที่ผ่านการตรวจสอบ"),
+        { selectedSizeStatus: status, quality: { status, size: crop.simummuangSize } });
+    }
     return reject(validSizes.length > 1 ? "size_selection_required" : "no_valid_price",
       validSizes.length ? "ต้องยืนยันขนาดสินค้า" : "ไม่มีช่วงราคาที่ผ่านการตรวจสอบ");
   }

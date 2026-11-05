@@ -27,9 +27,9 @@ const product = (key, price = { small: { min: 20, max: 30 } }) => ({
   ...copy(fixtures.find((item) => item._id === catalog[CROPS[key].name][0].id)),
   price: price && { updatedAt: '2026-11-04T01:00:00Z', action_date: '2026-11-04T01:05:00Z', ...price },
 });
-// Explicit product selections here are test-only, not permanent crop settings.
+// Legacy scenarios explicitly choose test sizes; production defaults are tested separately below.
 const chosen = (key, extra = {}) => ({ ...CROPS[key],
-  simummuangProductId: catalog[CROPS[key].name][0].id, ...extra });
+  simummuangProductId: catalog[CROPS[key].name][0].id, simummuangSize: 'small', ...extra });
 const status = (price, size = 'small') => inspect({ price }).find((entry) => entry.size === size).status;
 
 // The 32 original regression scenarios, updated for the intentional strict policy:
@@ -51,7 +51,7 @@ for (const key of Object.keys(CROPS)) {
 }
 test('skip invalid sizes while preserving a valid size', () => {
   const item = product('kale', { small: { min: 0, max: 20 }, large: { min: 40, max: 50 } });
-  const result = select(chosen('kale'), [item]);
+  const result = select(chosen('kale', { simummuangSize: 'large' }), [item]);
   assert.equal(result.selectedSize, 'large');
   assert.equal(result.mid, 45);
   assert.equal(result.sizes[0].status, 'incomplete_range');
@@ -64,7 +64,7 @@ test('specific fresh chili identity excludes broad and dried products', () => {
   assert.equal(select(chosen('chili'), [{ ...item, _id: 'other', th: { name: 'พริกจินดาแห้ง' } }, item]).productId, item._id);
 });
 test('a product id with a changed name is rejected', () => {
-  assert.equal(select(chosen('kale'), [{ ...product('kale'), th: { name: 'ยอดคะน้า' } }]).status, 'product_not_found');
+  assert.equal(select(chosen('kale'), [{ ...product('kale'), th: { name: 'ยอดคะน้า' } }]).status, 'product_identity_mismatch');
 });
 test('shallot never selects red onion', () => {
   assert.equal(select(chosen('shallot'), [{ ...product('shallot'), th: { name: 'หอมแดง' } }]).available, false);
@@ -78,7 +78,7 @@ test('missing, invalid, zero and negative prices are rejected', () => {
     { small: { min: 0, max: -1 } }, { small: { min: Infinity, max: NaN } }]) {
     const item = { ...product('kale'), price };
     assert.equal(range(item), null);
-    assert.equal(select(chosen('kale'), [item]).status, 'no_valid_price');
+    assert.equal(select(chosen('kale'), [item]).status, 'selected_size_unavailable');
   }
 });
 test('nested numeric strings stay supported but different sizes are not merged', () => {
@@ -98,7 +98,7 @@ test('existing variety exclusions remain intact', () => {
 });
 test('empty or unrelated items return product-not-found', () => {
   for (const items of [[], [null, {}, { name: 123 }]]) {
-    assert.equal(select(chosen('kale'), items).status, 'product_not_found');
+    assert.equal(select(chosen('kale'), items).status, 'selected_product_not_found');
   }
 });
 for (const [label, value] of [['true', true], ['false', false], ['null', null], ['empty string', ''], ['whitespace', ' \t\n ']]) {
@@ -119,7 +119,7 @@ for (const value of [1, 20.5, '1', '20.50', ' 20.50 ']) {
       const item = product('kale', { [size]: { min: value, max: value } });
       assert.equal(range(item).min, Number(value));
       assert.equal(range(item).max, Number(value));
-      assert.equal(select(chosen('kale'), [item]).mid, Number(value));
+      assert.equal(select(chosen('kale', { simummuangSize: size }), [item]).mid, Number(value));
     }
   });
 }
@@ -143,7 +143,7 @@ for (const [min, max, expected] of [[30, 20, 'invalid_range'], [0, 20, 'incomple
 }
 test('size choice must be explicit if multiple sizes are valid', () => {
   const item = product('kale', { small: { min: 20, max: 30 }, large: { min: 40, max: 50 } });
-  assert.equal(select(chosen('kale'), [item]).status, 'size_selection_required');
+  assert.equal(select(chosen('kale', { simummuangSize: undefined }), [item]).status, 'size_selection_required');
   const result = select(chosen('kale', { simummuangSize: 'large' }), [item]);
   assert.equal(result.min, 40);
   assert.equal(result.max, 50);
@@ -153,17 +153,20 @@ test('no fallback to another size when a confirmed size is invalid', () => {
   const item = product('kale', { small: { min: 30, max: 20 }, large: { min: 40, max: 50 } });
   assert.equal(select(chosen('kale', { simummuangSize: 'small' }), [item]).available, false);
 });
-test('primary products remain unconfirmed in production crop settings', () => {
+test('primary products are explicitly confirmed with large defaults in crop settings', () => {
   for (const key of Object.keys(CROPS)) {
-    assert.equal(CROPS[key].simummuangProductId, undefined);
-    assert.equal(select(CROPS[key], [product(key)]).status, 'selection_required');
+    const identity = catalog[CROPS[key].name][0];
+    assert.equal(CROPS[key].simummuangProductId, identity.id);
+    assert.equal(CROPS[key].simummuangProductName, identity.name);
+    assert.equal(CROPS[key].simummuangSize, 'large');
+    assert.equal(select(CROPS[key], [product(key)]).status, 'selected_size_unavailable');
   }
 });
 test('no substitution for a confirmed primary with an invalid price', () => {
   const options = catalog[CROPS.kale.name];
   const second = copy(fixtures.find((item) => item._id === options[1].id));
   second.price = { large: { min: 40, max: 50 } };
-  assert.equal(select(chosen('kale'), [product('kale', {}), second]).status, 'no_valid_price');
+  assert.equal(select(chosen('kale'), [product('kale', {}), second]).status, 'selected_size_unavailable');
 });
 test('reject piece prices and missing or conflicting unit labels', () => {
   for (const unit of [null, { th: { name: 'ชิ้น' }, en: { name: 'piece' } },
@@ -183,7 +186,7 @@ for (const key of Object.keys(CROPS)) {
   test(`captured real API fixture: ${key}`, () => {
     const item = fixtures.find((entry) => entry._id === chosen(key).simummuangProductId);
     const original = JSON.stringify(item);
-    const result = select(chosen(key), [item]);
+    const result = select(CROPS[key], [item]);
     const large = item.price.large;
     assert.equal(result.available, large.min > 0 && large.min <= large.max);
     assert.equal(JSON.stringify(item), original);
@@ -310,7 +313,7 @@ test('malformed group raw data and original endpoints are preserved', () => {
   assert.equal(sizes[2].status, 'invalid_range');
 });
 test('unknown ids with an otherwise identical name cannot impersonate a registered crop', () => {
-  assert.equal(select(chosen('kale'), [{ ...product('kale'), _id: 'unverified-id' }]).status, 'product_not_found');
+  assert.equal(select(chosen('kale'), [{ ...product('kale'), _id: 'unverified-id' }]).status, 'selected_product_not_found');
 });
 test('history guard safely rejects missing unit metadata', async () => {
   const box = await sandbox(() => page([product('kale')]));
@@ -322,7 +325,7 @@ test('a valid empty catalog response is complete, not a schema failure', async (
   const box = await sandbox(() => page([]));
   const result = await box.api.getSimumuangPrice(chosen('kale'));
   assert.equal(result.dataCompleteness.complete, true);
-  assert.equal(result.status, 'product_not_found');
+  assert.equal(result.status, 'selected_product_not_found');
 });
 test('failed expired refresh never serves stale cache as current', async () => {
   const clock = { now: Date.parse('2026-11-04T06:00:00Z') };
@@ -622,7 +625,7 @@ test('actual market JSX distinguishes freshness, loading, size errors and origin
   const ctx = vm.createContext({ React });
   vm.runInContext(transformed.code, ctx);
   const render = (market) => renderToStaticMarkup(React.createElement(ctx.View, { item: { markets: [market] } }));
-  const market = { market: 'ตลาดทดสอบ', unit: 'บาท/กก.', min: 20, max: 30,
+  const market = { market: 'ตลาดทดสอบ', productName: 'ต้นคะน้า', selectedSize: 'large', unit: 'บาท/กก.', min: 20, max: 30,
     sourceUpdatedAt: '2026-11-04T01:00:00Z', fetchedAt: '2026-11-04T06:00:00Z' };
   assert.ok(render({ ...market, available: true, verifiedCurrent: true }).includes('ราคาปัจจุบันที่ผ่านการตรวจสอบ'));
   assert.ok(render({ ...market, available: true, verifiedCurrent: false }).includes('ไม่สามารถยืนยันเวลาราคา'));
@@ -634,8 +637,144 @@ test('actual market JSX distinguishes freshness, loading, size errors and origin
   }
   const candidateHtml = render({ ...market, available: false, candidates: [{ productId: 'test',
     productName: 'ทดสอบ', unit: { th: 'กิโลกรัม' }, sizes: [
-      { size: 'small', status: 'invalid_range' }, { size: 'medium', status: 'missing_price' },
+      { size: 'small', status: 'invalid_range', raw: { min: 30, max: 20 } }, { size: 'medium', status: 'missing_price' },
       { size: 'large', status: 'incomplete_range' },
     ] }] });
-  for (const message of ['ช่วงราคาผิดปกติ', 'ไม่มีราคา', 'ช่วงราคาไม่ครบ']) assert.ok(candidateHtml.includes(message));
+  for (const message of ['ช่วงราคาผิดปกติ', 'ไม่มีราคา', 'ช่วงราคาไม่ครบ', 'ต้นคะน้า', '(large)', 'ค่าต้นทาง min/max: 30 / 20']) assert.ok(candidateHtml.includes(message));
+});
+
+// Step 52: literal identities from the user's confirmation, independent of catalog order.
+const confirmedPrimaries = {
+  shallot: ['698aaceeee6cbda61dfbd207', 'ต้นหอม'],
+  kale: ['698aacecee6cbda61dfbd1c3', 'ต้นคะน้า'],
+  pakchoi: ['698aacedee6cbda61dfbd1e5', 'กวางตุ้งใบ'],
+  chili: ['698aacebee6cbda61dfbd16f', 'พริกจินดาแดง'],
+  coriander: ['698aaceeee6cbda61dfbd20e', 'ผักชีไทย'],
+  celery: ['698aaceeee6cbda61dfbd22a', 'ขึ้นฉ่าย/ตั้งโอ๋ ดิน'],
+  morningglory: ['698aacf1ee6cbda61dfbd2b8', 'ผักบุ้งจีน'],
+  cucumber: ['6989c1bd2f44a006e423550e', 'แตงกวา'],
+  longbean: ['6989c1be2f44a006e423552f', 'ถั่วฝักยาว เนื้อ'],
+  cabbage: ['698aacefee6cbda61dfbd246', 'กะหล่ำปลีเขียว'],
+};
+assert.deepEqual(Object.keys(confirmedPrimaries).sort(), Object.keys(CROPS).sort());
+for (const [key, [id, name]] of Object.entries(confirmedPrimaries)) {
+  test(`confirmed default uses only large and saves verified metadata: ${key}`, async () => {
+    assert.equal(CROPS[key].simummuangProductId, id);
+    assert.equal(CROPS[key].simummuangProductName, name);
+    assert.equal(CROPS[key].simummuangSize, 'large');
+    const item = product(key, { small: { min: 1, max: 2 }, medium: { min: 3, max: 4 }, large: { min: 20, max: 30 } });
+    assert.equal(item._id, id);
+    assert.equal(item.th.name, name);
+    const box = await sandbox(() => page([item]));
+    // Do not overwrite CROPS: exercise the actual production defaults.
+    const data = await box.api.getCropMarketData(key);
+    const market = data.markets[1];
+    assert.equal(market.productId, id);
+    assert.equal(market.productName, name);
+    assert.equal(market.selectedSize, 'large');
+    assert.equal(market.min, 20);
+    assert.equal(market.max, 30);
+    assert.equal(market.mid, 25);
+    assert.equal(market.sizes.length, 3);
+    assert.equal(market.freshness.status, 'current');
+    assert.equal(market.verifiedCurrent, true);
+    assert.equal(data.averagePrice, 25);
+    assert.equal(data.priceStatus, 'current');
+    assert.equal(box.api.savePriceHistory(key, data), true);
+    assert.equal(box.api.savePriceHistory(key, data), false);
+    const record = (await box.request(`/api/history?crop=${key}`)).body.data[0];
+    assert.equal(record.markets[0].productId, id);
+    assert.equal(record.markets[0].productName, name);
+    assert.equal(record.markets[0].selectedSize, 'large');
+    assert.equal(record.markets[0].freshness.status, 'current');
+    assert.notEqual(record.markets[0].sourceUpdatedAt, record.markets[0].fetchedAt);
+  });
+  test(`unusable large never falls back or reaches averages/history: ${key}`, async () => {
+    for (const [large, expected] of [
+      [{ min: 30, max: 20 }, 'invalid_range'],
+      [{ min: 0, max: 30 }, 'incomplete_range'],
+      [{ min: 20, max: 0 }, 'incomplete_range'],
+      [{ min: 0, max: 0 }, 'missing_price'],
+      [{ min: true, max: 30 }, 'invalid_value'],
+      [undefined, 'missing_price'],
+    ]) {
+      const item = product(key, { small: { min: 1, max: 2 }, medium: { min: 3, max: 4 }, ...(large ? { large } : {}) });
+      const original = JSON.stringify(item);
+      const box = await sandbox(() => page([item]));
+      const data = await box.api.getCropMarketData(key);
+      const market = data.markets[1];
+      assert.equal(market.available, false);
+      assert.equal(market.productName, name);
+      assert.equal(market.selectedSize, 'large');
+      assert.equal(market.selectedSizeStatus, expected);
+      assert.equal(market.quality.status, expected);
+      assert.equal(market.sourceUpdatedAt, item.price.updatedAt);
+      assert.ok(market.reason.includes('ขนาดที่เลือกใช้ไม่ได้'));
+      assert.equal(market.candidates[0].sizes[0].status, 'valid');
+      assert.equal(data.averagePrice, null);
+      assert.equal(data.sourceCount, 0);
+      assert.equal(box.api.savePriceHistory(key, { ...data, averagePrice: 25 }), false);
+      assert.equal(box.writes(), 0);
+      assert.equal(JSON.stringify(item), original);
+    }
+  });
+  test(`identity mismatch and alternatives cannot replace confirmed primary: ${key}`, () => {
+    const item = product(key, { large: { min: 20, max: 30 } });
+    const wrongName = select(CROPS[key], [{ ...item, th: { name: `${name}ชนิดอื่น` } }]);
+    assert.equal(wrongName.status, 'product_identity_mismatch');
+    assert.equal(wrongName.available, false);
+    assert.equal(wrongName.productName, name);
+    const wrongId = select(CROPS[key], [{ ...item, _id: 'another-id' }]);
+    assert.equal(wrongId.status, 'selected_product_not_found');
+    assert.equal(wrongId.available, false);
+    const alternatives = fixtures.filter((entry) => entry._id !== id &&
+      catalog[CROPS[key].name].some((option) => option.id === entry._id));
+    const absent = select(CROPS[key], alternatives);
+    assert.equal(absent.available, false);
+    assert.equal(absent.status, 'selected_product_not_found');
+    const invalidPrimary = { ...item, price: { ...item.price, large: { min: 30, max: 20 } } };
+    assert.equal(select(CROPS[key], [...alternatives, invalidPrimary]).status, 'selected_size_unavailable');
+  });
+  test(`large requires current source time and kg regardless of isShow: ${key}`, async () => {
+    for (const [timestamp, expected] of [
+      ['2020-01-01T00:00:00Z', 'expired'],
+      ['2026-11-03T16:00:00Z', 'stale'],
+      [null, 'invalid_timestamp'], ['bad', 'invalid_timestamp'],
+      ['2026-11-05T06:00:00Z', 'invalid_timestamp'],
+    ]) {
+      const item = product(key, { large: { min: 20, max: 30 }, updatedAt: timestamp });
+      item.isShow = false;
+      const box = await sandbox(() => page([item]));
+      const data = await box.api.getCropMarketData(key);
+      assert.equal(data.markets[1].freshness.status, expected);
+      assert.equal(data.markets[1].available, false);
+      assert.equal(data.averagePrice, null);
+      assert.equal(box.api.savePriceHistory(key, data), false);
+      assert.equal(box.writes(), 0);
+    }
+    const item = product(key, { large: { min: 20, max: 30 } });
+    item.isShow = false;
+    const box = await sandbox(() => page([item]));
+    assert.equal((await box.api.getCropMarketData(key)).markets[1].available, true);
+    const piece = { ...item, prod_unit_id: { th: { name: 'ชิ้น' }, en: { name: 'piece' } } };
+    assert.equal(select(CROPS[key], [piece]).status, 'unsupported_unit');
+  });
+}
+test('unconfigured future selector still requests explicit identity rather than guessing', () => {
+  const crop = { ...CROPS.kale, simummuangProductId: undefined, simummuangProductName: undefined, simummuangSize: undefined };
+  assert.equal(select(crop, [product('kale')]).status, 'selection_required');
+});
+test('unknown-time other-market policy is unchanged when primary large is rejected', async () => {
+  const box = await sandbox(() => page([product('kale', { large: { min: 30, max: 20 } })]));
+  box.api.setSrimuang(async () => otherMarket());
+  const data = await box.api.getCropMarketData('kale');
+  assert.equal(data.markets[1].quality.status, 'invalid_range');
+  assert.equal(data.markets[0].freshness.status, 'unknown_timestamp');
+  assert.equal(data.priceStatus, 'unverified_freshness');
+  assert.equal(data.averagePrice, 25);
+  assert.equal(box.api.savePriceHistory('kale', data), true);
+  const record = (await box.request('/api/history')).body.data[0];
+  assert.equal(record.markets.length, 1);
+  assert.equal(record.markets[0].market, 'ตลาดศรีเมือง ราชบุรี');
+  assert.equal(record.priceStatus, 'unverified_freshness');
 });

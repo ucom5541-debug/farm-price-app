@@ -400,14 +400,22 @@ useEffect(() => {
       <div key={`${market.market}-${marketIndex}`}>
         <p>
           {market.market}:{' '}
+          {!market.available && market.productName && (
+            <>{market.productName} {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize}${market.selectedSize === 'large' ? ' (large)' : ''}`} — </>
+          )}
           {market.available ? (
             <>
               {market.productName && `${market.productName} `}
-              {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize} `}
+              {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize}${market.selectedSize === 'large' ? ' (large)' : ''} `}
               {market.min === market.max ? market.min : `${market.min} - ${market.max}`} บาท/กก.
             </>
           ) : (market.reason || 'ยังไม่มีราคาที่ผ่านการตรวจสอบ')}
         </p>
+        {!market.available && market.freshness && (
+          <p>สถานะเวลาราคา: {{ current: 'อยู่ในเกณฑ์ปัจจุบัน (ช่วงราคาอาจยังใช้ไม่ได้)',
+            stale: 'ราคาเก่า', expired: 'ราคาหมดอายุ', invalid_timestamp: 'เวลาราคาไม่ถูกต้อง',
+            unknown_timestamp: 'ไม่สามารถยืนยันเวลาราคา' }[market.freshness.status] || 'ไม่ทราบสถานะ'}</p>
+        )}
         {market.available && (
           <p>{market.verifiedCurrent ? 'ราคาปัจจุบันที่ผ่านการตรวจสอบ' : 'ไม่สามารถยืนยันเวลาราคา — ใช้เพื่อเปรียบเทียบ'}</p>
         )}
@@ -431,6 +439,9 @@ useEffect(() => {
                     {range.status === 'valid'
                       ? `${range.min} - ${range.max} บาท/${candidate.unit?.th || 'ไม่ทราบหน่วย'}`
                       : (statusLabels[range.status] || 'ข้อมูลราคาไม่ถูกต้อง')}
+                    {range.status !== 'valid' && range.raw != null && (
+                      <span> (ค่าต้นทาง min/max: {String(range.raw.min ?? 'ไม่ระบุ')} / {String(range.raw.max ?? 'ไม่ระบุ')})</span>
+                    )}
                   </p>
                 ))}
               </div>
