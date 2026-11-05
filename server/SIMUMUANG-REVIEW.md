@@ -69,11 +69,12 @@ metadata complete หมายถึงหน้าที่อ่านแล�
 ยังใช้และบันทึกราคาของอีกตลาดที่ผ่านได้ sourceCount ระบุเฉพาะตลาดที่ใช้จริง
 ประวัติเดิมไม่ถูกแก้/ลบ ฟังก์ชันบันทึกตรวจทุกตลาดซ้ำและตรวจค่าเฉลี่ยก่อนเขียน
 สี่มุมเมืองต้องมี validated/ขนาด/หน่วย/complete และ freshness=current
-ข้อมูลใหม่ schemaVersion=2 เก็บ markets พร้อมรหัส ชื่อ ขนาด หน่วย min/max/mid
-sourceUpdatedAt, action_date, fetchedAt, quality และ freshness ค่าที่ไม่มีจริงเก็บ null
-วันละหนึ่งรายการต่อพืชตาม Asia/Bangkok ถ้าวันนั้นมีข้อมูลเก่าหรือใหม่แล้วจะข้าม
-ไม่เขียนทับ ไม่ตัดทิ้งเมื่อเกิน 5000 รายการ และไม่แก้ in-memory history หากเขียนไฟล์ล้มเหลว
-ข้อแลกเปลี่ยน: หากบันทึกตลาดเดียวไปแล้ว จะไม่เพิ่มตลาดที่กลับมาสำเร็จภายหลังในวันเดียวกัน
+ขั้นตอน 55 ใช้ schemaVersion=3 เป็นเหตุการณ์ market_append แต่ละเหตุการณ์เก็บเฉพาะตลาดใหม่
+พร้อมรหัส ชื่อ ขนาด หน่วย min/max/mid, sourceUpdatedAt, action_date, fetchedAt, quality,
+freshness และ pricePolicy snapshot ค่าที่ต้นทางไม่มีจริงเก็บ null ไม่สร้างแทน
+วันหนึ่งมีได้หลายเหตุการณ์ แต่ตลาดเดิมของพืช/วันที่ Asia/Bangkok จะบันทึกได้ครั้งเดียว
+ไม่แทนราคาตลาดเดิม ไม่ตัดทิ้งเมื่อเกิน 5000 รายการ และไม่แก้ in-memory history หากเขียนไฟล์ล้มเหลว
+/api/history รวมเป็น daily view หนึ่งรายการต่อพืช/วันโดยไม่แก้รายการต้นฉบับ
 
 ## การทดสอบ
 
@@ -129,7 +130,8 @@ write failure และ render JSX จริง; เวลาทดสอบค�
 
 ตลาดที่ยังไม่มีรหัส/ชื่อสินค้าจริง/ขนาด/เวลาต้นทางที่ตรวจได้ เก็บ null โดยไม่สร้างข้อมูลแทน
 เกณฑ์ valid ในที่นี้ตรวจตัวเลขและหน่วยที่ adapter ส่งมา ไม่ยืนยันชนิด/เกรดหรือเวลาราคาของศรีเมือง
-ส่วนการจัดเก็บประวัติยังเป็นไฟล์ JSON แบบเดิม ไม่ใช่ฐานข้อมูลสำหรับหลาย process เขียนพร้อมกัน
+ส่วนการจัดเก็บยังเป็น JSON array ใช้ cooperative lock และ atomic rename บน filesystem เดียวกัน
+ไม่ใช่ฐานข้อมูลหรือระบบล็อกข้าม runner/หลายเครื่อง
 
 ## หมายเหตุสำหรับขั้นตอน 52
 
@@ -139,5 +141,67 @@ write failure และ render JSX จริง; เวลาทดสอบค�
 
 คงนโยบายตลาดอื่น: unknown_timestamp ใช้เปรียบเทียบ/บันทึกแบบ unverified_freshness ได้ตามค่าตั้งเดิม
 ห้ามเรียกประวัตินั้นว่าราคาปัจจุบันที่ยืนยันแล้ว ประวัติสี่มุมเมืองต้องมี freshness=current เท่านั้น
-ไม่เปลี่ยนระบบวันละหนึ่งรายการ: หากวันนั้นบันทึกอีกตลาดไปแล้ว ยังไม่เติมสี่มุมเมืองในวันเดียวกัน
+ขั้นตอน 55 เพิ่มความสามารถเติมตลาดที่ขาดสำหรับ schema 2/3 แล้ว โดยไม่แทนข้อมูลตลาดเดิม
+สำหรับ legacy aggregate ที่ไม่มี metadata ตลาด ยังคงหยุดรอตรวจสอบแทนการเดาแหล่งข้อมูล
 ไม่มีการเปลี่ยนราคาใน fixtures; ทดสอบเวลาแบบควบคุมเพื่อไม่อ้าง snapshot 4 พ.ย. เป็นราคาวันนี้
+
+## ขั้นตอน 55 — ประวัติ append-only และมุมมองรายวัน
+
+### รูปแบบไฟล์และ API
+
+- ไฟล์ยังเป็น JSON array เดิม รายการ legacy/schema 2 ไม่ถูกแก้หรือย้าย
+- ข้อมูลใหม่เป็น {schemaVersion:3, recordType:"market_append", eventId, crop, name,
+  date, timestamp, pricePolicy, markets:[เฉพาะตลาดที่ยังขาด]}
+- date อ้างอิง Asia/Bangkok; timestamp เป็นเวลารับ observation ไม่ใช่เวลาราคาต้นทาง
+- ตลาดมีเอกลักษณ์ด้วยชื่อตลาดภายใน crop/date ไม่ใช้การเปลี่ยนรหัส/ขนาดหลบการตรวจซ้ำ
+- /api/history และ ?crop=... คืน envelope status/count/data เดิม แต่ count เป็นจำนวนจุดรายวัน
+  มี averagePrice/minPrice/maxPrice/sourceCount/timestamp แบบเดิม พร้อม markets และ recordIndexes
+- daily view เลือก observation แรกของแต่ละตลาด ไม่เปลี่ยนเป็นราคาที่ใหม่กว่าของตลาดเดิม
+  คำนวณค่าเฉลี่ย midpoint รายตลาด ไม่รวมขนาด/หน่วยที่ทราบว่าไม่ตรงกัน
+- ตรวจประวัติตามเวลาที่บันทึก ไม่ใช้เวลาวันนี้ทำให้ราคาประวัติเดิมหมดอายุหรือหายไป
+- legacy ที่ซ้ำวันเลือกแบบเดียวกับกราฟเดิม: minPrice บวก, มี >=2 ตลาด, แล้วเวลาล่าสุด
+  ไฟล์ยังเก็บทุกแถวเดิม ส่วนกราฟ/API แสดงจุดเดียว ไม่ใช่นำค่าเฉลี่ยซ้ำมารวม
+- legacy ที่ไม่ทราบว่าตลาดใดถูกใช้จะไม่รับการเติมอัตโนมัติในวันนั้น
+- unknown_timestamp ยังคง unverified_freshness; หากมีเวลาปัจจุบันแต่ metadata ชนิด/ขนาดขาด
+  จะเป็น unverified_metadata ไม่เรียกว่าราคาปัจจุบันที่ยืนยันครบ
+
+### การเขียนไฟล์และข้อจำกัด
+
+สร้าง .price-history.json.lock ด้วย exclusive create; อ่าน JSON ล่าสุดภายใน lock ทุกครั้ง
+ถ้าพบ lock ของผู้อื่นหยุด history_busy ไม่ลบทิ้งเอง ตรวจ root/schema ก่อนเขียน
+serialize เป็น JSON array ใหม่โดยคงทุกรายการเดิม แล้วเขียนไฟล์ชั่วคราวใน directory เดียวกัน
+ตรวจ JSON, fsync ไฟล์ และ rename ไปยังชื่อจริง เป็น logical append-only แม้แทนไฟล์ทั้ง array
+ถ้า open/write/fsync/rename ล้มเหลว ไฟล์เดิมยังอยู่และไม่แก้ cache; เก็บกวาด temp/lock ที่ตนถือ
+
+O_EXCL lock ป้องกันเฉพาะผู้เขียนที่ใช้กติกาเดียวกันบน filesystem เดียวกัน
+ผู้เขียนที่ไม่ใช้ lock, NFS ที่ไม่รับรอง semantics, runner คนละเครื่อง หรือแก้ผ่าน Git ไม่ถูกล็อกด้วยวิธีนี้
+process crash อาจเหลือ lock/temp ต้องตรวจว่าไม่มีผู้เขียนก่อนจัดการด้วยมือ ห้ามลบ lock อัตโนมัติ
+ไม่ได้รับรองการทนไฟดับทุก filesystem: fsync ไฟล์แล้ว แต่ไม่ได้รับรอง directory journal durability
+ไฟล์ JSON จะโตตามเหตุการณ์ที่เพิ่ม ไม่มีการลบประวัติอัตโนมัติ
+
+### GitHub Actions
+
+ไม่แก้ .github/workflows/daily-prices.yml: concurrency group เดิมช่วย serialize งาน workflow
+แต่การเติมตลาดช่วงบ่ายต้องมีการเรียก --save-once อีกรอบหรือ workflow_dispatch โดยผู้ใช้
+ไม่มีการเพิ่ม schedule หรือเรียก workflow จริงในงานนี้
+
+--save-once ที่มีราคาผ่านเกณฑ์แต่ไม่มีตลาดใหม่ให้เพิ่ม จะออกสำเร็จโดยไม่แก้ bytes ของไฟล์
+git diff --quiet ใน workflow จึงข้าม Commit/Push ซ้ำได้ ส่วนไม่มีราคาผ่านเลย/เขียนล้มเหลวยังออก error
+การ Push default branch ที่เจอ commit จากผู้อื่นยังอาจ non-fast-forward ต้องตรวจและรวม append events
+ด้วยมือ ห้าม force; lock ใน workspace ไม่ป้องกันการแข่งขันข้าม Git repository clone
+ไม่มีการรัน git commit/push หรือเขียน default branch จากการทดสอบ
+
+### ขอบเขตทดสอบ
+
+ชุดเดิม 165 กรณียังคงตรวจ และปรับ sandbox ให้เขียนเฉพาะ mkdtemp ใต้ /tmp
+ทดสอบ lock/fsync/rename จริงบนไฟล์ชั่วคราว ไม่ใช้ไฟล์ประวัติ Production
+กรณีเดิมที่คาดจำนวน raw แถวใน API เปลี่ยนให้ตรวจ raw file แยกจากจำนวนจุดรายวัน
+เพิ่มกรณี A เช้า/B บ่าย, duplicate, failure injection, schema 2/legacy,
+shared-file server contexts, concurrent calls, Bangkok midnight และ workflow no-op behavior
+การทดสอบหลาย context ไม่ใช่การพิสูจน์ทุก filesystem/หลาย process ทุกกรณี
+
+ผลตรวจขั้นตอน 55: ชุดทดสอบ 165 เดิมพร้อมปรับให้ตรง daily view + 30 ใหม่ รวม 195 กรณี
+ตรวจไฟล์จริงแบบอ่านอย่างเดียว 704 แถว legacy ได้ 456 จุดรายวัน ราคาและ timestamp ที่กราฟเลือก
+ตรงกับพฤติกรรมเดิมทุกพืช ไม่มีการเขียนไฟล์จริงหรือแก้ workflow
+freshnessScope=at_observation และ freshness.evaluatedAt ระบุว่าความสดของประวัติ
+เป็นสถานะ ณ เวลารับข้อมูล ไม่ได้อ้างว่าราคาในอดีตเป็นราคาปัจจุบันของวันนี้

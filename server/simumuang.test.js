@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 const source = fs.readFileSync(new URL('./server.js', import.meta.url), 'utf8');
 const fixtures = JSON.parse(fs.readFileSync(new URL('./simumuang.fixtures.json', import.meta.url), 'utf8')).products;
@@ -196,17 +198,44 @@ for (const key of Object.keys(CROPS)) {
 }
 
 // Load real server handlers into a sandbox: never opens a port, calls the network,
-// reads actual history or writes to disk. Test the real pagination/cache/history code.
-async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z') }, initialHistory = [], policyEnv = {}) {
+// reads production history. History writes are restricted to unique temporary files.
+// Exercise real filesystem lock/fsync/rename operations without opening network ports.
+const testDirectories = [];
+after(() => { for (const directory of testDirectories) fs.rmSync(directory, { recursive: true, force: true }); });
+async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z') }, initialHistory = [], policyEnv = {}, sharedHistory = null) {
   let handler;
   let calls = 0;
   let writes = 0;
-  let writeError = false;
-  const ctx = vm.createContext({ URL, AbortSignal,
+  let failureStage = null;
+  const directory = sharedHistory ? new URL('./', sharedHistory) : pathToFileURL(fs.mkdtempSync('/tmp/farm-history-test-') + '/');
+  if (!sharedHistory) testDirectories.push(directory);
+  const historyFile = sharedHistory || new URL('price-history.json', directory);
+  if (!sharedHistory) fs.writeFileSync(historyFile, JSON.stringify(initialHistory), 'utf8');
+  const mockedFs = {
+    ...fs,
+    readFileSync: (file, ...args) => String(file).endsWith('.pem') ? '' : fs.readFileSync(file, ...args),
+    openSync: (file, ...args) => {
+      if (failureStage === 'open' && String(file).endsWith('.tmp')) throw Error('mock open failure');
+      return fs.openSync(file, ...args);
+    },
+    writeFileSync: (...args) => {
+      if (failureStage === 'write') throw Error('mock disk failure');
+      return fs.writeFileSync(...args);
+    },
+    fsyncSync: (...args) => {
+      if (failureStage === 'fsync') throw Error('mock fsync failure');
+      return fs.fsyncSync(...args);
+    },
+    renameSync: (...args) => {
+      if (failureStage === 'rename') throw Error('mock rename failure');
+      const result = fs.renameSync(...args); writes++; return result;
+    },
+  };
+  const ctx = vm.createContext({ URL, AbortSignal, randomUUID,
     Date: class extends Date { static now() { return clock.now; } },
     console: { log() {}, error() {}, warn() {} },
-    process: { env: policyEnv, argv: [] }, tls: { rootCertificates: [] }, Agent: class {},
-    fs: { existsSync: () => true, readFileSync: () => JSON.stringify(initialHistory), writeFileSync: () => { if (writeError) throw Error('mock disk failure'); writes++; } },
+    process: { env: policyEnv, argv: [], pid: process.pid }, tls: { rootCertificates: [] }, Agent: class {},
+    fs: mockedFs,
     http: { createServer(fn) { handler = fn; return { listen() {} }; } },
     setTimeout: (fn) => { fn(); },
     fetch: async (url) => {
@@ -219,15 +248,18 @@ async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z'
     },
     undiciFetch: async () => ({ ok: true, text: async () => '' }),
   });
-  const code = source.replace(/^import .*;\n/gm, '').replaceAll('import.meta.url', JSON.stringify('file:///mock/server.js'));
-  await vm.runInContext(`(async () => {${code}\nglobalThis.api={CROPS, getSimumuangPrice, savePriceHistory, getCropMarketData, saveDailyPrices, validateMarketPrice, inspectPriceFreshness, PRICE_POLICY, setSrimuang: (load) => { getSrimuangPrice = load; }};})()`, ctx);
-  return { failWrites: (fail) => { writeError = fail; }, context: ctx, api: ctx.api, calls: () => calls, writes: () => writes,
+  const code = source.replace(/^import .*;\n/gm, '').replaceAll('import.meta.url', JSON.stringify(new URL('server.js', directory).href));
+  await vm.runInContext(`(async () => {${code}\nglobalThis.api={CROPS, getSimumuangPrice, savePriceHistory, getCropMarketData, saveDailyPrices, saveOnceExitCode, buildDailyHistory, validateMarketPrice, inspectPriceFreshness, PRICE_POLICY, setSrimuang: (load) => { getSrimuangPrice = load; }};})()`, ctx);
+  return { historyFile, directory, failWrites: (fail) => { failureStage = fail ? 'write' : null; },
+    failAt: (stage) => { failureStage = stage; }, context: ctx, api: ctx.api, calls: () => calls, writes: () => writes,
+    rawHistory: () => JSON.parse(fs.readFileSync(historyFile, 'utf8')),
     request: async (path) => {
       let status, body;
       await handler({ url: path, method: 'GET' }, { setHeader() {}, writeHead(s) { status = s; }, end(text) { body = JSON.parse(text); } });
       return { status, body };
     } };
 }
+
 function page(items, currentPage = 1, total = items.length, extra = {}) {
   return { ok: true, json: async () => ({ data: { data: items, total, itemCount: items.length,
     perPage: 20, totalPages: Math.max(1, Math.ceil(total / 20)), currentPage, ...extra } }) };
@@ -278,6 +310,7 @@ test('complete multi-page snapshot verifies the total and preserves unique ids',
 });
 test('history guard rejects unverified Simummuang and preserves immutable daily snapshots', async () => {
   const box = await sandbox(() => page([product('kale')]));
+  Object.assign(box.api.CROPS.kale, chosen('kale'));
   const market = await box.api.getSimumuangPrice(chosen('kale'));
   const data = { name: 'คะน้า', averagePrice: 25, minPrice: 20, maxPrice: 30,
     sourceCount: 1, historyEligible: true, markets: [market] };
@@ -530,7 +563,7 @@ test('new immutable history contains metadata while old-format records stay unch
   assert.deepEqual(history[0], legacy);
   assert.equal(history.length, 2);
   const record = history[1];
-  assert.equal(record.schemaVersion, 2);
+  assert.equal(record.schemaVersion, 3);
   assert.equal(record.markets[0].productId, chosen('kale').simummuangProductId);
   assert.equal(record.markets[0].productName, product('kale').th.name);
   assert.equal(record.markets[0].selectedSize, 'small');
@@ -560,8 +593,9 @@ test('never delete old history when adding a new daily record', async () => {
   Object.assign(box.api.CROPS.kale, chosen('kale'));
   assert.equal(box.api.savePriceHistory('kale', await box.api.getCropMarketData('kale')), true);
   const history = (await box.request('/api/history')).body.data;
-  assert.equal(history.length, 5002);
-  assert.deepEqual(history.slice(0, 5001), legacy);
+  assert.equal(history.length, 2); // one point per crop/day, even for duplicate legacy rows
+  assert.equal(box.rawHistory().length, 5002);
+  assert.deepEqual(box.rawHistory().slice(0, 5001), legacy);
 });
 test('a valid current other-market timestamp produces confirmed-current metadata', async () => {
   const box = await sandbox(() => page([]));
@@ -777,4 +811,284 @@ test('unknown-time other-market policy is unchanged when primary large is reject
   assert.equal(record.markets.length, 1);
   assert.equal(record.markets[0].market, 'ตลาดศรีเมือง ราชบุรี');
   assert.equal(record.priceStatus, 'unverified_freshness');
+});
+
+async function enrichmentScenario(initialHistory = [], sharedHistory = null) {
+  const clock = { now: Date.parse('2026-11-04T01:00:00Z') };
+  let recovered = false;
+  let other = otherMarket({ productName: 'คะน้าต้น' });
+  let item = product('kale', { large: { min: 40, max: 60 }, updatedAt: '2026-11-04T01:00:00Z' });
+  const box = await sandbox(() => recovered ? page([item]) : { ok: false, status: 503 }, clock,
+    initialHistory, {}, sharedHistory);
+  box.api.setSrimuang(async () => {
+    if (!other) throw Error('market A unavailable');
+    return copy(other);
+  });
+  return { box, clock, recover: () => { recovered = true; clock.now = Date.parse('2026-11-04T06:00:00Z'); },
+    setItem: (value) => { item = value; }, setOther: (value) => { other = value; },
+    data: () => box.api.getCropMarketData('kale') };
+}
+function chartMap(history, crop = 'kale') {
+  const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  const ctx = vm.createContext({});
+  vm.runInContext(app.slice(app.indexOf('const DAY_MS'), app.indexOf('function App()')) +
+    ';globalThis.build=buildDailyHistoryMap;', ctx);
+  return ctx.build(history, crop);
+}
+test('morning A plus afternoon B appends only missing market and produces one graph point', async () => {
+  const flow = await enrichmentScenario();
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), true);
+  const firstEvent = copy(flow.box.rawHistory()[0]);
+  assert.equal(firstEvent.markets.length, 1);
+  flow.recover();
+  flow.setOther(otherMarket({ min: 100, max: 200, mid: 150 }));
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), true);
+  const raw = flow.box.rawHistory();
+  assert.equal(raw.length, 2);
+  assert.deepEqual(raw[0], firstEvent);
+  assert.equal(raw[1].markets.length, 1);
+  assert.equal(raw[1].markets[0].market, 'ตลาดสี่มุมเมือง');
+  const response = await flow.box.request('/api/history?crop=kale');
+  assert.equal(response.body.count, 1);
+  const day = response.body.data[0];
+  assert.equal(day.sourceCount, 2);
+  assert.equal(day.averagePrice, 37.5); // original A midpoint 25, not replacement 150; B midpoint 50
+  assert.equal(day.markets[0].mid, 25);
+  assert.equal(day.recordCount, 2);
+  assert.equal(day.priceStatus, 'unverified_freshness');
+  assert.equal(chartMap(response.body.data).size, 1);
+  assert.equal(chartMap(response.body.data).get('2026-11-04').averagePrice, 37.5);
+});
+test('repeated calls do not change bytes or create duplicate market observations', async () => {
+  const flow = await enrichmentScenario();
+  flow.recover();
+  const data = await flow.data();
+  assert.equal(flow.box.api.savePriceHistory('kale', data), true);
+  const bytes = fs.readFileSync(flow.box.historyFile, 'utf8');
+  assert.equal(flow.box.api.savePriceHistory('kale', data), false);
+  assert.equal(fs.readFileSync(flow.box.historyFile, 'utf8'), bytes);
+  assert.equal(flow.box.writes(), 1);
+});
+for (const [label, large, updatedAt] of [
+  ['inverted', { min: 60, max: 40 }, '2026-11-04T01:00:00Z'],
+  ['incomplete', { min: 0, max: 60 }, '2026-11-04T01:00:00Z'],
+  ['missing', { min: 0, max: 0 }, '2026-11-04T01:00:00Z'],
+  ['invalid value', { min: true, max: 60 }, '2026-11-04T01:00:00Z'],
+  ['stale', { min: 40, max: 60 }, '2026-11-03T16:00:00Z'],
+  ['expired', { min: 40, max: 60 }, '2020-01-01T00:00:00Z'],
+  ['invalid timestamp', { min: 40, max: 60 }, null],
+]) {
+  test(`B recovery with ${label} cannot append an unusable price`, async () => {
+    const flow = await enrichmentScenario();
+    flow.box.api.savePriceHistory('kale', await flow.data());
+    const original = fs.readFileSync(flow.box.historyFile, 'utf8');
+    flow.setItem(product('kale', { large, updatedAt }));
+    flow.recover();
+    assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), false);
+    assert.equal(fs.readFileSync(flow.box.historyFile, 'utf8'), original);
+    assert.equal((await flow.box.request('/api/history')).body.data[0].sourceCount, 1);
+  });
+}
+test('A disappearing from the next request does not remove its original observation', async () => {
+  const flow = await enrichmentScenario();
+  flow.box.api.savePriceHistory('kale', await flow.data());
+  flow.setOther(null);
+  flow.recover();
+  const data = await flow.data();
+  assert.equal(data.sourceCount, 1);
+  assert.equal(flow.box.api.savePriceHistory('kale', data), true);
+  const day = (await flow.box.request('/api/history')).body.data[0];
+  assert.equal(day.sourceCount, 2);
+  assert.equal(day.averagePrice, 37.5);
+});
+test('a different Bangkok date permits the same market without duplicating the prior day', async () => {
+  const flow = await enrichmentScenario();
+  flow.clock.now = Date.parse('2026-11-04T16:59:00Z');
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), true);
+  flow.clock.now = Date.parse('2026-11-04T17:01:00Z');
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), true);
+  const data = (await flow.box.request('/api/history')).body.data;
+  assert.equal(data.length, 2);
+  assert.equal(chartMap(data).size, 2);
+  assert.equal(flow.box.rawHistory()[0].date, '2026-11-04');
+  assert.equal(flow.box.rawHistory()[1].date, '2026-11-05');
+});
+test('schema 2 observations can be enriched while the original record stays byte-equivalent', async () => {
+  const original = { schemaVersion: 2, crop: 'kale', name: 'คะน้า', averagePrice: 25, minPrice: 20,
+    maxPrice: 30, sourceCount: 1, timestamp: '2026-11-04T01:00:00Z', priceStatus: 'unverified_freshness',
+    markets: [{ market: 'ตลาดศรีเมือง ราชบุรี', productId: null, productName: 'คะน้าต้น', selectedSize: null,
+      unit: 'บาท/กก.', sourceUnit: null, min: 20, max: 30, mid: 25, sourceUpdatedAt: null,
+      fetchedAt: '2026-11-04T01:00:00Z', quality: { status: 'valid' },
+      freshness: { status: 'unknown_timestamp' }, status: 'unknown_timestamp' }] };
+  const flow = await enrichmentScenario([original]);
+  flow.recover(); flow.setOther(null);
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), true);
+  assert.deepEqual(flow.box.rawHistory()[0], original);
+  const day = (await flow.box.request('/api/history')).body.data[0];
+  assert.equal(day.averagePrice, 37.5);
+  assert.equal(day.sourceCount, 2);
+});
+test('legacy same-day aggregate cannot be enriched by guessing its missing markets', async () => {
+  const original = { crop: 'kale', averagePrice: 25, sourceCount: 1, timestamp: '2026-11-04T01:00:00Z' };
+  const flow = await enrichmentScenario([original]); flow.recover();
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), false);
+  assert.deepEqual(flow.box.rawHistory(), [original]);
+  assert.deepEqual((await flow.box.request('/api/history')).body.data, [original]);
+});
+for (const stage of ['open', 'write', 'fsync', 'rename']) {
+  test(`atomic history failure at ${stage} preserves original file and removes own lock/temp`, async () => {
+    const flow = await enrichmentScenario();
+    flow.box.api.savePriceHistory('kale', await flow.data());
+    const original = fs.readFileSync(flow.box.historyFile, 'utf8');
+    flow.recover();
+    const data = await flow.data();
+    flow.box.failAt(stage);
+    assert.throws(() => flow.box.api.savePriceHistory('kale', data), /mock/);
+    assert.equal(fs.readFileSync(flow.box.historyFile, 'utf8'), original);
+    assert.deepEqual(fs.readdirSync(flow.box.directory), ['price-history.json']);
+    assert.equal((await flow.box.request('/api/history')).body.count, 1);
+    flow.box.failAt(null);
+    assert.equal(flow.box.api.savePriceHistory('kale', data), true);
+    assert.equal(flow.box.rawHistory().length, 2);
+  });
+}
+
+test('malformed JSON is not repaired or overwritten and GET history reports an error', async () => {
+  const flow = await enrichmentScenario();
+  const data = await flow.data();
+  fs.writeFileSync(flow.box.historyFile, '{broken json', 'utf8');
+  assert.throws(() => flow.box.api.savePriceHistory('kale', data));
+  assert.equal(fs.readFileSync(flow.box.historyFile, 'utf8'), '{broken json');
+  assert.equal((await flow.box.request('/api/history')).status, 500);
+  assert.deepEqual(fs.readdirSync(flow.box.directory), ['price-history.json']);
+});
+test('valid JSON with invalid history structure is never overwritten', async () => {
+  const flow = await enrichmentScenario();
+  const data = await flow.data();
+  fs.writeFileSync(flow.box.historyFile, JSON.stringify([{ crop: 'kale', timestamp: 'bad' }]), 'utf8');
+  const bytes = fs.readFileSync(flow.box.historyFile, 'utf8');
+  assert.throws(() => flow.box.api.savePriceHistory('kale', data), /รูปแบบประวัติ/);
+  assert.equal(fs.readFileSync(flow.box.historyFile, 'utf8'), bytes);
+});
+test('an existing lock prevents writing and is never removed by a competing caller', async () => {
+  const flow = await enrichmentScenario();
+  const data = await flow.data();
+  const lock = new URL('.price-history.json.lock', flow.box.directory);
+  const fd = fs.openSync(lock, 'wx');
+  try {
+    assert.throws(() => flow.box.api.savePriceHistory('kale', data), /history_busy/);
+    assert.equal(fs.existsSync(lock), true);
+    assert.equal(flow.box.rawHistory().length, 0);
+  } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+  assert.equal(flow.box.api.savePriceHistory('kale', data), true);
+});
+test('two stale server contexts reload inside the lock before appending to a shared temporary file', async () => {
+  const first = await enrichmentScenario();
+  const second = await enrichmentScenario([], first.box.historyFile);
+  assert.equal(first.box.api.savePriceHistory('kale', await first.data()), true);
+  second.recover(); second.setOther(null);
+  assert.equal(second.box.api.savePriceHistory('kale', await second.data()), true);
+  assert.equal(first.box.rawHistory().length, 2);
+  const day = (await first.box.request('/api/history')).body.data[0];
+  assert.equal(day.sourceCount, 2);
+  assert.equal(day.averagePrice, 37.5);
+});
+test('concurrent calls for the same observation produce exactly one append', async () => {
+  const flow = await enrichmentScenario();
+  const data = await flow.data();
+  const results = await Promise.all([Promise.resolve().then(() => flow.box.api.savePriceHistory('kale', data)),
+    Promise.resolve().then(() => flow.box.api.savePriceHistory('kale', data))]);
+  assert.deepEqual(results, [true, false]);
+  assert.equal(flow.box.rawHistory().length, 1);
+  assert.equal(flow.box.writes(), 1);
+});
+test('a changed identity, unit or known size is not merged into a daily history', async () => {
+  const flow = await enrichmentScenario();
+  flow.setOther(otherMarket({ selectedSize: 'small' }));
+  flow.box.api.savePriceHistory('kale', await flow.data());
+  flow.recover(); flow.setOther(null);
+  assert.equal(flow.box.api.savePriceHistory('kale', await flow.data()), false);
+  assert.equal(flow.box.rawHistory().length, 1);
+  const box = await sandbox(() => page([]));
+  const rawWrong = otherMarket({ productName: 'ผักชีไทย' });
+  const validated = box.api.validateMarketPrice(rawWrong, referenceTime);
+  assert.equal(box.api.savePriceHistory('kale', { name: 'คะน้า', averagePrice: 25,
+    historyEligible: true, markets: [validated] }), false);
+});
+test('historical current status is evaluated at recording time, not at the day of reading', async () => {
+  const flow = await enrichmentScenario(); flow.recover(); flow.setOther(null);
+  flow.box.api.savePriceHistory('kale', await flow.data());
+  flow.clock.now = Date.parse('2026-12-01T06:00:00Z');
+  const row = (await flow.box.request('/api/history')).body.data[0];
+  assert.equal(row.markets[0].freshness.status, 'current');
+  assert.equal(row.priceStatus, 'current');
+  assert.equal(row.date, '2026-11-04');
+  assert.equal(row.freshnessScope, 'at_observation');
+  assert.equal(row.markets[0].freshness.scope, 'at_observation');
+});
+test('a duplicate successful daily run is a no-op success for GitHub Actions', async () => {
+  const box = await sandbox(() => ({ ok: false, status: 503 }));
+  box.api.setSrimuang(async () => otherMarket());
+  const first = await box.api.saveDailyPrices();
+  assert.equal(first.saved, 10);
+  assert.equal(box.api.saveOnceExitCode(first), 0);
+  const bytes = fs.readFileSync(box.historyFile, 'utf8');
+  const second = await box.api.saveDailyPrices();
+  assert.equal(second.saved, 0);
+  assert.equal(second.unchanged, 10);
+  assert.equal(second.failed, 0);
+  assert.equal(box.api.saveOnceExitCode(second), 0);
+  assert.equal(fs.readFileSync(box.historyFile, 'utf8'), bytes);
+  assert.equal(box.writes(), 10); // workflow's git diff stays empty on the second run
+});
+test('daily no-data and actual write failures remain errors rather than false no-op success', async () => {
+  const box = await sandbox(() => ({ ok: false, status: 503 }));
+  const noData = await box.api.saveDailyPrices();
+  assert.equal(noData.saved, 0);
+  assert.equal(noData.eligible, 0);
+  assert.equal(box.api.saveOnceExitCode(noData), 1);
+  box.api.setSrimuang(async () => otherMarket());
+  box.failAt('rename');
+  const failed = await box.api.saveDailyPrices();
+  assert.equal(failed.failed, 10);
+  assert.equal(box.api.saveOnceExitCode(failed), 1);
+  assert.equal(box.rawHistory().length, 0);
+});
+test('daily-view grouping never merges crops on the same date and the chart retains separate keys', async () => {
+  const legacy = ['kale', 'shallot'].map((crop) => ({ crop, averagePrice: 25, timestamp: '2026-11-04T01:00:00Z' }));
+  const box = await sandbox(() => page([]), undefined, legacy);
+  const response = await box.request('/api/history');
+  assert.equal(response.body.count, 2);
+  assert.equal(chartMap(response.body.data, null).size, 2);
+  assert.equal(chartMap(response.body.data, 'kale').size, 1);
+});
+
+test('a current timestamp with unknown product/size metadata is not called fully confirmed history', async () => {
+  const box = await sandbox(() => page([]));
+  box.api.setSrimuang(async () => otherMarket({ sourceUpdatedAt: '2026-11-04T01:00:00Z' }));
+  assert.equal(box.api.savePriceHistory('kale', await box.api.getCropMarketData('kale')), true);
+  const row = (await box.request('/api/history')).body.data[0];
+  assert.equal(row.priceStatus, 'unverified_metadata');
+  assert.equal(row.metadataStatus, 'incomplete_source_identity');
+});
+test('invalid legacy averages cannot hide another usable record for the same day', async () => {
+  const valid = { crop: 'kale', minPrice: 10, averagePrice: 15, sourceCount: 1, timestamp: '2026-11-04T01:00:00Z' };
+  const invalid = { ...valid, averagePrice: 0, sourceCount: 2, timestamp: '2026-11-04T06:00:00Z' };
+  const box = await sandbox(() => page([]), undefined, [valid, invalid]);
+  assert.deepEqual((await box.request('/api/history')).body.data, [valid]);
+  assert.deepEqual(box.rawHistory(), [valid, invalid]);
+});
+test('duplicate market observations in existing metadata never replace the first observation', async () => {
+  const flow = await enrichmentScenario();
+  flow.box.api.savePriceHistory('kale', await flow.data());
+  const first = flow.box.rawHistory()[0];
+  const duplicate = copy(first);
+  duplicate.eventId = 'duplicate-source-record';
+  duplicate.markets[0].min = 100; duplicate.markets[0].max = 200; duplicate.markets[0].mid = 150;
+  fs.writeFileSync(flow.box.historyFile, JSON.stringify([first, duplicate]), 'utf8');
+  const data = (await flow.box.request('/api/history')).body.data;
+  assert.equal(data.length, 1);
+  assert.equal(data[0].sourceCount, 1);
+  assert.equal(data[0].averagePrice, 25);
+  assert.equal(flow.box.rawHistory().length, 2);
 });

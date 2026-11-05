@@ -2,6 +2,7 @@ import http from "http";
 import fs from "fs";
 import { Agent, fetch as undiciFetch } from "undici";
 import tls from "node:tls";
+import { randomUUID } from "node:crypto";
 
 const srimuangAgent = new Agent({
   connect: {
@@ -44,43 +45,191 @@ function bangkokDate(timestamp = Date.now()) {
     year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
+function readPriceHistory() {
+  const records = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+  if (!Array.isArray(records) || records.some((record) => !record || typeof record !== "object" ||
+      typeof record.crop !== "string" || typeof record.timestamp !== "string" ||
+      !Number.isFinite(Date.parse(record.timestamp)) ||
+      ![undefined, 1, 2, 3].includes(record.schemaVersion) ||
+      (record.schemaVersion === 3 && (!Array.isArray(record.markets) ||
+        record.date !== bangkokDate(record.timestamp))))) {
+    throw new Error("รูปแบบประวัติไม่ถูกต้อง หยุดเพื่อป้องกันข้อมูลสูญหาย");
+  }
+  return records;
+}
+
+function historyMarketKey(market) {
+  return typeof market?.market === "string" && market.market.trim() ? market.market : null;
+}
+
+function historyMarketCompatible(market, cropKey, existing = []) {
+  const crop = CROPS[cropKey];
+  if (!crop || market.unit !== "บาท/กก.") return false;
+  if (market.market === "ตลาดสี่มุมเมือง") {
+    if (market.productId !== crop.simummuangProductId || market.productName !== crop.simummuangProductName ||
+        market.selectedSize !== crop.simummuangSize || !isSimumuangKg(market.sourceUnit)) return false;
+  } else if (market.market === "ตลาดศรีเมือง ราชบุรี") {
+    // Missing identity remains unknown; a known different product is rejected.
+    if (market.productName && ![crop.name, crop.srimuangKeyword].includes(market.productName)) return false;
+  } else return false;
+  return !existing.some((saved) => saved.unit !== market.unit ||
+    (saved.selectedSize && market.selectedSize && saved.selectedSize !== market.selectedSize));
+}
+
+function persistedMarket(market) {
+  return {
+    market: market.market, productId: market.productId ?? null,
+    productName: market.productName ?? null, selectedSize: market.selectedSize ?? null,
+    unit: market.unit, sourceUnit: market.sourceUnit ?? null,
+    min: market.min, max: market.max, mid: market.mid,
+    sourceUpdatedAt: market.sourceUpdatedAt ?? null,
+    action_date: market.action_date ?? null, fetchedAt: market.fetchedAt ?? null,
+    quality: market.quality, freshness: market.freshness, status: market.status,
+    source: market.source ?? null,
+  };
+}
+
+function validatedHistoricalMarket(market, record) {
+  if (market?.quality?.status !== "valid" ||
+      !["current", "unknown_timestamp"].includes(market.freshness?.status)) return null;
+  // Evaluate historical eligibility at the observation time, never at today's time.
+  const checked = validateMarketPrice({ ...market, available: true,
+    validated: true, dataCompleteness: { complete: true } }, Date.parse(record.timestamp), { ...(record.pricePolicy ?? {
+      currentMaxAgeMs: 24 * 3600000, staleMaxAgeMs: 48 * 3600000, futureToleranceMs: 0 }),
+      allowUnknownTimestamp: true });
+  return checked.available && checked.historyEligible ? { ...checked,
+    freshness: { ...checked.freshness, evaluatedAt: record.timestamp, scope: "at_observation" } } : null;
+}
+
+function buildDailyHistory(records, cropKey = null) {
+  const groups = new Map();
+  records.forEach((record, index) => {
+    if (cropKey && record.crop !== cropKey) return;
+    const date = bangkokDate(record.timestamp);
+    if (!date) return;
+    const key = `${record.crop}:${date}`;
+    if (!groups.has(key)) groups.set(key, { date, records: [] });
+    groups.get(key).records.push({ record, index });
+  });
+  const result = [];
+  for (const group of groups.values()) {
+    const legacy = group.records.filter(({ record }) => !Array.isArray(record.markets));
+    if (legacy.length) {
+      // Unknown source provenance cannot safely be combined with market events.
+      const usableLegacy = legacy.filter(({ record }) => Number.isFinite(Number(record.averagePrice)) && Number(record.averagePrice) > 0);
+      if (!usableLegacy.length) continue;
+      const preferred = [...usableLegacy].sort((a, b) =>
+        Number(Number(b.record.minPrice) > 0) - Number(Number(a.record.minPrice) > 0) ||
+        Number(Number(b.record.sourceCount) >= 2) - Number(Number(a.record.sourceCount) >= 2) ||
+        Date.parse(b.record.timestamp) - Date.parse(a.record.timestamp))[0].record;
+      result.push(preferred);
+      continue;
+    }
+    const occupied = new Set();
+    const markets = [];
+    for (const { record } of group.records) {
+      for (const market of record.markets) {
+        const key = historyMarketKey(market);
+        if (!key || occupied.has(key)) continue;
+        // First observation wins even if invalid; never substitute a later price.
+        occupied.add(key);
+        const checked = validatedHistoricalMarket(market, record);
+        if (checked && !markets.some((saved) => saved.unit !== checked.unit ||
+            (saved.selectedSize && checked.selectedSize && saved.selectedSize !== checked.selectedSize))) {
+          markets.push(checked);
+        }
+      }
+    }
+    if (!markets.length) continue;
+    const first = group.records[0].record;
+    const last = group.records[group.records.length - 1].record;
+    result.push({ schemaVersion: 3, dailyView: true, freshnessScope: "at_observation", crop: first.crop, name: first.name,
+      date: group.date, timestamp: last.timestamp, firstObservedAt: first.timestamp,
+      averagePrice: average(markets.map((market) => market.mid)),
+      medianPrice: median(markets.map((market) => market.mid)),
+      minPrice: Math.min(...markets.map((market) => market.min)),
+      maxPrice: Math.max(...markets.map((market) => market.max)),
+      sourceCount: markets.length, unit: "บาท/กก.",
+      priceStatus: !markets.every((market) => market.verifiedCurrent) ? "unverified_freshness" :
+        markets.every((market) => market.productId && market.productName && market.selectedSize) ? "current" : "unverified_metadata",
+      metadataStatus: markets.every((market) => market.productId && market.productName && market.selectedSize) ? "complete" : "incomplete_source_identity",
+      markets: markets.map(persistedMarket), recordCount: group.records.length,
+      recordIndexes: group.records.map(({ index }) => index) });
+  }
+  return result.sort((a, b) => bangkokDate(a.timestamp).localeCompare(bangkokDate(b.timestamp)) ||
+    a.crop.localeCompare(b.crop));
+}
+
+function atomicWriteHistory(records) {
+  const text = JSON.stringify(records, null, 2);
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed) || parsed.length !== records.length) throw new Error("ประวัติ JSON ไม่สมบูรณ์");
+  const temporary = new URL(`./.price-history.${process.pid}.${randomUUID()}.tmp`, HISTORY_FILE);
+  let fd;
+  try {
+    fd = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(fd, text, "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    const verified = JSON.parse(fs.readFileSync(temporary, "utf8"));
+    if (JSON.stringify(verified) !== JSON.stringify(parsed)) throw new Error("ตรวจสอบไฟล์ชั่วคราวไม่ผ่าน");
+    fs.renameSync(temporary, HISTORY_FILE);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+}
+
 function savePriceHistory(cropKey, data) {
   if (!data || data.historyEligible === false || !Array.isArray(data.markets)) return false;
   const now = Date.now();
-  const markets = data.markets.map((market) => validateMarketPrice(market, now))
+  const valid = data.markets.map((market) => validateMarketPrice(market, now))
     .filter((market) => market.available && market.historyEligible);
-  if (!markets.length) return false;
-  const expectedAverage = average(markets.map((market) => market.mid));
-  if (!Number.isFinite(data.averagePrice) || Math.abs(data.averagePrice - expectedAverage) > 1e-9) return false;
-  const today = bangkokDate(now);
-  // Immutable daily snapshots: never overwrite legacy records or add a duplicate.
-  if (priceHistory.some((item) => item.crop === cropKey && bangkokDate(item.timestamp) === today)) return false;
-  const updated = {
-    schemaVersion: 2,
-    crop: cropKey, name: data.name,
-    averagePrice: expectedAverage,
-    medianPrice: median(markets.map((market) => market.mid)),
-    minPrice: Math.min(...markets.map((market) => market.min)),
-    maxPrice: Math.max(...markets.map((market) => market.max)),
-    sourceCount: markets.length, unit: "บาท/กก.",
-    timestamp: new Date(now).toISOString(),
-    priceStatus: markets.every((market) => market.verifiedCurrent) ? "current" : "unverified_freshness",
-    markets: markets.map((market) => ({
-      market: market.market, productId: market.productId ?? null,
-      productName: market.productName ?? null, selectedSize: market.selectedSize ?? null,
-      unit: market.unit, sourceUnit: market.sourceUnit ?? null,
-      min: market.min, max: market.max, mid: market.mid,
-      sourceUpdatedAt: market.sourceUpdatedAt,
-      action_date: market.action_date ?? null, fetchedAt: market.fetchedAt ?? null,
-      quality: market.quality, freshness: market.freshness, status: market.status,
-      source: market.source ?? null,
-    })),
-  };
-  const nextHistory = [...priceHistory, updated];
-  // No retention deletion. Failed writes must not alter the in-memory history.
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(nextHistory, null, 2), "utf8");
-  priceHistory = nextHistory;
-  return true;
+  if (!valid.length || !Number.isFinite(data.averagePrice) ||
+      Math.abs(data.averagePrice - average(valid.map((market) => market.mid))) > 1e-9) return false;
+  const lock = new URL("./.price-history.json.lock", HISTORY_FILE);
+  let lockFd;
+  try {
+    // Cooperative local writers only: fail rather than remove another writer's lock.
+    try { lockFd = fs.openSync(lock, "wx", 0o600); }
+    catch (error) {
+      if (error.code === "EEXIST") throw new Error("history_busy: มีผู้เขียนประวัติอยู่แล้ว ห้ามลบ lock อัตโนมัติ");
+      throw error;
+    }
+    // Reload inside the lock so another process's completed append cannot be lost.
+    const diskHistory = readPriceHistory();
+    const today = bangkokDate(now);
+    const daily = diskHistory.filter((record) => record.crop === cropKey && bangkokDate(record.timestamp) === today);
+    if (daily.some((record) => !Array.isArray(record.markets))) {
+      console.warn(`legacy_history_requires_review: ${cropKey} ${today}`);
+      priceHistory = diskHistory;
+      return false;
+    }
+    const occupied = new Set(daily.flatMap((record) => record.markets).map(historyMarketKey));
+    const existing = daily.flatMap((record) => record.markets
+      .map((market) => validatedHistoricalMarket(market, record)).filter(Boolean));
+    const additions = [];
+    for (const market of valid) {
+      const key = historyMarketKey(market);
+      if (!key || occupied.has(key) || !historyMarketCompatible(market, cropKey, [...existing, ...additions])) continue;
+      occupied.add(key);
+      additions.push(market);
+    }
+    if (!additions.length) { priceHistory = diskHistory; return false; }
+    const event = { schemaVersion: 3, recordType: "market_append", eventId: randomUUID(),
+      crop: cropKey, name: data.name, date: today, timestamp: new Date(now).toISOString(),
+      pricePolicy: { ...PRICE_POLICY }, markets: additions.map(persistedMarket) };
+    const nextHistory = [...diskHistory, event];
+    atomicWriteHistory(nextHistory);
+    priceHistory = nextHistory;
+    return true;
+  } finally {
+    if (lockFd !== undefined) {
+      fs.closeSync(lockFd);
+      fs.unlinkSync(lock);
+    }
+  }
 }
 // ==========================================
 // พืชที่เราติดตาม
@@ -1027,12 +1176,14 @@ const server = http.createServer(
 if (url.pathname === "/api/history") {
   const cropKey = url.searchParams.get("crop");
 
-  let history = priceHistory;
-
-  if (cropKey) {
-    history = priceHistory.filter(
-      (item) => item.crop === cropKey
-    );
+  let history;
+  try {
+    const records = readPriceHistory();
+    history = buildDailyHistory(records, cropKey);
+    priceHistory = records;
+  } catch (error) {
+    res.writeHead(500);
+    return res.end(JSON.stringify({ status: "error", message: "อ่านประวัติราคาไม่สำเร็จ กรุณาตรวจสอบไฟล์ต้นฉบับ" }));
   }
 
   res.writeHead(200);
@@ -1155,17 +1306,22 @@ async function saveDailyPrices() {
   console.log("เริ่มบันทึกราคา (เวลาไทย):", bangkokDate());
   let saved = 0;
   let skipped = 0;
+  let eligible = 0;
+  let unchanged = 0;
+  let failed = 0;
 
   for (const cropKey of Object.keys(CROPS)) {
     try {
       const data = await getCropMarketData(cropKey);
       // Save with at least one verified market; sourceCount records reliability.
       if (data && data.historyEligible !== false && data.sourceCount >= 1 && Number.isFinite(data.averagePrice)) {
+        eligible += 1;
         if (savePriceHistory(cropKey, data)) {
           saved += 1;
           console.log(`บันทึก ${data.name}: ${data.averagePrice} บาท/กก. (${data.sourceCount} ตลาด)`);
         } else {
           skipped += 1;
+          unchanged += 1;
           console.warn(`ข้ามข้อมูลซ้ำหรือไม่ผ่านเกณฑ์: ${cropKey}`);
         }
       } else {
@@ -1174,11 +1330,16 @@ async function saveDailyPrices() {
       }
     } catch (error) {
       skipped += 1;
+      failed += 1;
       console.error(`บันทึก ${cropKey} ไม่สำเร็จ:`, error);
     }
   }
   console.log(`เสร็จแล้ว: บันทึก ${saved} รายการ, ข้าม ${skipped} รายการ`);
-  return { saved, skipped };
+  return { saved, skipped, eligible, unchanged, failed };
+}
+
+function saveOnceExitCode(result) {
+  return result.failed > 0 || (result.saved === 0 && result.eligible === 0) ? 1 : 0;
 }
 
 // GitHub Actions runs this command once per day and commits the resulting file.
@@ -1186,10 +1347,9 @@ async function saveDailyPrices() {
 if (process.argv.includes("--save-once")) {
   try {
     const result = await saveDailyPrices();
-    if (result.saved === 0) {
-      console.error("ไม่มีราคาที่บันทึกได้เลย: ยกเลิกงานเพื่อให้ GitHub Actions แจ้งความล้มเหลว");
-      process.exitCode = 1;
-    }
+    process.exitCode = saveOnceExitCode(result);
+    if (process.exitCode) console.error("ไม่มีราคาที่ผ่านเกณฑ์ หรือเขียนประวัติล้มเหลว");
+    else if (result.saved === 0) console.log("ไม่มีตลาดใหม่ที่ต้องเพิ่ม: ประวัติไม่เปลี่ยน ไม่ต้อง Commit ซ้ำ");
   } catch (error) {
     console.error("บันทึกรายวันล้มเหลว:", error);
     process.exitCode = 1;

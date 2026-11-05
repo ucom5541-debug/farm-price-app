@@ -155,6 +155,21 @@ function isPreferredHistory(candidate, existing) {
   return false
 }
 
+function buildDailyHistoryMap(history, selectedCrop) {
+  const latestByDay = new Map()
+  history.forEach((item) => {
+    const price = Number(item?.averagePrice)
+    const dayKey = bangkokDayKey(item?.timestamp)
+    if (!dayKey || !Number.isFinite(price) || price <= 0) return
+    if (selectedCrop && item?.crop !== selectedCrop) return
+    const candidate = { ...item, averagePrice: price, dayKey }
+    const key = selectedCrop ? dayKey : `${item.crop}:${dayKey}`
+    const previous = latestByDay.get(key)
+    if (!previous || isPreferredHistory(candidate, previous)) latestByDay.set(key, candidate)
+  })
+  return latestByDay
+}
+
 function App() {
   const [page, setPage] = useState('home')
   const [selectedCrop, setSelectedCrop] = useState(null)
@@ -171,25 +186,8 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [chartDays, setChartDays] = useState(7)
 
-  // ไม่เปลี่ยนไฟล์ประวัติจริง: เลือกราคาหนึ่งรายการต่อหนึ่งวันเพื่อแสดงผลเท่านั้น
-  const dailyHistory = useMemo(() => {
-    const latestByDay = new Map()
-
-    history.forEach((item) => {
-      const price = Number(item?.averagePrice)
-      const dayKey = bangkokDayKey(item?.timestamp)
-      if (!dayKey || !Number.isFinite(price) || price <= 0) return
-      if (selectedCrop && item?.crop !== selectedCrop) return
-
-      const candidate = { ...item, averagePrice: price, dayKey }
-      const oldItem = latestByDay.get(dayKey)
-      if (!oldItem || isPreferredHistory(candidate, oldItem)) {
-        latestByDay.set(dayKey, candidate)
-      }
-    })
-
-    return latestByDay
-  }, [history, selectedCrop])
+  // API returns the append-only daily view; retain legacy deduplication as a safeguard.
+  const dailyHistory = useMemo(() => buildDailyHistoryMap(history, selectedCrop), [history, selectedCrop])
 
   // สร้างวันที่ครบตามช่วง 7/30/90 วัน โดยใช้ null เมื่อไม่มีราคาจริง
   const chartData = useMemo(() => {
@@ -483,6 +481,10 @@ useEffect(() => {
                     <br />
                     <small>
                       {formatDayFull(item.dayKey)} — {item.sourceCount ?? '?'} ตลาด
+                      {' · '}{item.priceStatus === 'current' ? 'ผ่านการตรวจสอบ ณ เวลาบันทึก'
+                        : item.priceStatus === 'unverified_freshness' ? 'มีราคาที่ไม่ยืนยันเวลาต้นทาง'
+                        : item.priceStatus === 'unverified_metadata' ? 'ข้อมูลชนิดหรือขนาดยังไม่ครบ ใช้เปรียบเทียบ'
+                        : 'ข้อมูลเดิม ไม่ทราบสถานะเวลาราคา'}
                     </small>
                   </div>
                 ))}
@@ -491,6 +493,7 @@ useEffect(() => {
           </div>
           <div className="menu-card">
             <h3>📈 กราฟราคา</h3>
+            <p>แสดงหนึ่งจุดต่อพืชต่อวันจากตลาดที่บันทึกได้ ประวัติบางรายการอาจไม่ยืนยันเวลาราคาต้นทาง</p>
             <p className="highest-price">
               ราคาสูงสุด {highestPrice ?? '-'} บาท/กก.
             </p>
