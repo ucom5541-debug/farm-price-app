@@ -17,6 +17,55 @@ function formatMarketTime(value) {
   return new Date(value).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })
 }
 
+// Only expose allowlisted connection diagnostics, never raw URLs, headers or tokens.
+function safeConnectionDetails(value) {
+  if (typeof value !== 'string') return []
+  const details = []
+  const status = value.match(/(?:HTTP\s*|ตอบกลับ\s*)([45]\d{2})\b/i)
+  if (status) details.push(`สถานะ HTTP: ${status[1]}`)
+  const code = value.match(/\b(EAI_AGAIN|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT)\b/)
+  if (code) details.push(`รหัสการเชื่อมต่อ: ${code[1]}`)
+  for (const raw of value.match(/https?:\/\/[^\s<>"']+/gi) || []) {
+    try {
+      const parsed = new URL(raw)
+      // Market hosts are known public destinations. Do not expose arbitrary host data.
+      if (['www.taladsrimuang.com', 'taladsrimuang.com', 'api.simummuangmarket.com'].includes(parsed.hostname)) {
+        details.push(`ปลายทาง: ${parsed.hostname}`)
+      }
+    } catch { /* An invalid URL must not expose its original text. */ }
+  }
+  return [...new Set(details)]
+}
+
+function marketIssueMessage(market) {
+  const qualityMessages = {
+    invalid_range: 'ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด',
+    incomplete_range: 'ช่วงราคาไม่ครบ มีราคาศูนย์ด้านเดียว',
+    missing_price: 'ไม่มีราคา', invalid_value: 'ข้อมูลราคาไม่ถูกต้อง',
+  }
+  if (market.status === 'selected_size_unavailable') {
+    return `ขนาดที่เลือกใช้ไม่ได้: ${qualityMessages[market.selectedSizeStatus || market.quality?.status] || 'ไม่มีช่วงราคาที่ผ่านการตรวจสอบ'}`
+  }
+  const messages = {
+    ...qualityMessages,
+    load_failed: 'ตลาดโหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
+    incomplete_data: 'ตลาดโหลดข้อมูลไม่สำเร็จหรือข้อมูลไม่ครบ กรุณาลองใหม่ภายหลัง',
+    stale: 'ราคาเก่า ไม่ใช้คำนวณราคาปัจจุบัน', expired: 'ราคาหมดอายุ ไม่ใช้คำนวณ',
+    invalid_timestamp: 'เวลาราคาต้นทางไม่ถูกต้องหรือไม่สามารถอ่านได้',
+    unknown_timestamp: 'ไม่สามารถยืนยันเวลาราคา',
+    selection_required: 'รอยืนยันรหัสสินค้าหลัก', selected_product_not_found: 'ไม่พบสินค้าหลักที่ยืนยันไว้ ต้องตรวจสอบข้อมูล',
+    product_identity_mismatch: 'ชื่อสินค้าหลักไม่ตรงกับรหัสที่ยืนยัน ต้องตรวจสอบข้อมูล',
+    unsupported_unit: 'หน่วยสินค้าไม่ใช่กิโลกรัม', invalid_mid: 'ราคากลางไม่สอดคล้องกับช่วงราคา',
+    product_not_found: 'ไม่พบสินค้าที่ต้องการ', duplicate_product: 'พบรหัสสินค้าซ้ำ ต้องตรวจสอบข้อมูล',
+    size_selection_required: 'ต้องยืนยันขนาดสินค้า', no_valid_price: 'ไม่มีช่วงราคาที่ผ่านการตรวจสอบ',
+    unverified_price: 'ข้อมูลสินค้ายังไม่ผ่านการตรวจสอบ',
+  }
+  if (messages[market.status]) return messages[market.status]
+  // Older APIs sometimes omit status. Preserve known Thai reasons only.
+  if (['ขนาดที่เลือกใช้ไม่ได้', 'รอยืนยันรหัสสินค้าหลัก', 'ตลาดโหลดข้อมูลไม่สำเร็จ', 'ไม่พบสินค้า'].includes(market.reason)) return market.reason
+  return 'ยังไม่มีราคาที่ผ่านการตรวจสอบจากตลาดนี้'
+}
+
 const CROPS = {
   shallot: {
     title: 'หอมแบ่ง',
@@ -260,7 +309,6 @@ function App() {
       }
 
       const data = await response.json()
-      console.log("DASHBOARD API DATA:", data)
 
       setSimumuangData(data)
       const received = data?.data?.data || []
@@ -271,7 +319,7 @@ function App() {
           ? 'รับข้อมูลแล้ว มีราคาปัจจุบันที่ผ่านการตรวจสอบ'
           : 'รับข้อมูลแล้ว มีราคาเปรียบเทียบที่ยังยืนยันเวลาราคาไม่ได้')
     } catch (err) {
-      console.error(err)
+      console.error('โหลดข้อมูลราคาไม่สำเร็จ', safeConnectionDetails(err?.message))
 
       setServerStatus('เชื่อมต่อ Server ไม่สำเร็จ')
       setError(err.message || 'ดึงข้อมูลไม่สำเร็จ')
@@ -349,7 +397,13 @@ useEffect(() => {
             {error && (
               <>
                 <h2>ดึงข้อมูลไม่สำเร็จ</h2>
-                <p>{error}</p>
+                <p className="market-error-message">ไม่สามารถโหลดข้อมูลราคาได้ กรุณาลองใหม่ภายหลัง</p>
+                {safeConnectionDetails(error).length > 0 && (
+                  <details className="market-error-details">
+                    <summary>รายละเอียดการเชื่อมต่อที่ปลอดภัย</summary>
+                    {safeConnectionDetails(error).map((detail) => <p key={detail}>{detail}</p>)}
+                  </details>
+                )}
               </>
             )}
 
@@ -407,8 +461,14 @@ useEffect(() => {
               {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize}${market.selectedSize === 'large' ? ' (large)' : ''} `}
               {market.min === market.max ? market.min : `${market.min} - ${market.max}`} บาท/กก.
             </>
-          ) : (market.reason || 'ยังไม่มีราคาที่ผ่านการตรวจสอบ')}
+          ) : marketIssueMessage(market)}
         </p>
+        {!market.available && safeConnectionDetails(market.reason).length > 0 && (
+          <details className="market-error-details">
+            <summary>รายละเอียดการเชื่อมต่อที่ปลอดภัย</summary>
+            {safeConnectionDetails(market.reason).map((detail) => <p key={detail}>{detail}</p>)}
+          </details>
+        )}
         {!market.available && market.freshness && (
           <p>สถานะเวลาราคา: {{ current: 'อยู่ในเกณฑ์ปัจจุบัน (ช่วงราคาอาจยังใช้ไม่ได้)',
             stale: 'ราคาเก่า', expired: 'ราคาหมดอายุ', invalid_timestamp: 'เวลาราคาไม่ถูกต้อง',

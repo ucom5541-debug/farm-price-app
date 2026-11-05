@@ -58,7 +58,7 @@ body {
 
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
@@ -217,4 +217,57 @@ body {
 .chart-range-buttons button.active {
   background: #4f8f83;
   color: white;
+}
+/* Allow content to shrink and wrap, rather than clipping mobile content. */
+.app {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dashboard,
+.header,
+.menu-grid,
+.menu-card,
+.market-list,
+.price-chart {
+  min-width: 0;
+}
+
+.menu-card,
+.header,
+.back-button,
+.market-error-details {
+  overflow-wrap: anywhere;
+}
+
+.market-list > div,
+.market-list details,
+.market-error-details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.market-error-details summary {
+  cursor: pointer;
+}
+
+.market-error-details p {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.back-button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.chart-range-buttons {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.price-table th,
+.price-table td {
+  overflow-wrap: anywhere;
 }
