@@ -6514,5 +6514,95 @@
     "maxPrice": 17,
     "sourceCount": 2,
     "timestamp": "2026-11-05T07:54:36.973Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 170,
+    "minPrice": 160,
+    "maxPrice": 180,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:31.696Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 42,
+    "minPrice": 38,
+    "maxPrice": 48,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:33.109Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 13.5,
+    "minPrice": 12,
+    "maxPrice": 16,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:33.412Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 40.75,
+    "minPrice": 38,
+    "maxPrice": 45,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:33.719Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 122.5,
+    "minPrice": 100,
+    "maxPrice": 140,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:34.024Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 30.5,
+    "minPrice": 25,
+    "maxPrice": 35,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:34.327Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 34.25,
+    "minPrice": 25,
+    "maxPrice": 42,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:34.631Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 87.5,
+    "minPrice": 80,
+    "maxPrice": 100,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:34.930Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 22,
+    "minPrice": 14,
+    "maxPrice": 30,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:35.233Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 14.5,
+    "minPrice": 12,
+    "maxPrice": 17,
+    "sourceCount": 2,
+    "timestamp": "2026-11-06T07:54:35.529Z"
   }
 ]
