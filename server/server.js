@@ -818,52 +818,94 @@ let simuMuangItemsCache = null;
 let simuMuangCacheTime = 0;
 const SIMUMUANG_CACHE_MS = 5 * 60 * 1000;
 let simuMuangLoadingPromise = null;
+let simuMuangFailure = null;
+const SIMUMUANG_RETRY_DELAY_MS = 30 * 1000;
+const SIMUMUANG_FAILURE_COOLDOWN_MS = 2 * 60 * 1000;
 
 async function loadSimumuangItems() {
-  const allItems = [];
-  const seen = new Set();
-  const pages = [];
-  let expected = null;
-  try {
-    for (let page = 1; page <= (expected?.totalPages ?? 1); page++) {
-      if (page > 1) await new Promise((resolve) => setTimeout(resolve, 500));
-      const url = "https://api.simummuangmarket.com/api/app/products" +
-        `?page=${page}` + "&limit=20";
-      const response = await fetch(url, {
-        headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 Farm-Dashboard/1.0" },
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!response.ok) throw new Error(`page ${page}: HTTP ${response.status}`);
-      const { data } = await response.json();
-      if (!Array.isArray(data?.data) || !Number.isSafeInteger(data.total) || data.total < 0 ||
-          !Number.isSafeInteger(data.totalPages) || data.totalPages < 1 || data.totalPages > 60 ||
-          data.currentPage !== page || data.perPage !== 20 ||
-          data.itemCount !== data.data.length ||
-          data.totalPages !== Math.max(1, Math.ceil(data.total / data.perPage))) {
-        throw new Error(`page ${page}: invalid pagination/schema`);
-      }
-      expected ??= { total: data.total, totalPages: data.totalPages };
-      if (data.total !== expected.total || data.totalPages !== expected.totalPages) {
-        throw new Error(`page ${page}: pagination changed`);
-      }
-      const expectedCount = page < expected.totalPages ? 20 : expected.total - (page - 1) * 20;
-      if (data.data.length !== expectedCount) throw new Error(`page ${page}: incomplete page`);
-      for (const item of data.data) {
-        if (typeof item?._id !== "string" || !item._id || seen.has(item._id)) {
-          throw new Error(`page ${page}: duplicate or missing product id`);
+  // Each attempt owns its items. Integrity checks do not establish a provider snapshot.
+  const attempts = [];
+  let requestCount = 0;
+  let verifiedPageCount = null;
+  const diagnostics = () => ({ attempts, requestCount,
+    requestBudget: verifiedPageCount === null ? 2 : 2 * verifiedPageCount,
+    maxAttempts: 2, retryDelayMs: SIMUMUANG_RETRY_DELAY_MS,
+    snapshotConsistency: "not_confirmed" });
+  const fail = (issue, message, retryable = false) => Object.assign(new Error(message), { issue, retryable });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const allItems = [];
+    const seen = new Set();
+    const pages = [];
+    let expected = null;
+    let currentPage = 1;
+    const requestsBefore = requestCount;
+    try {
+      for (let page = 1; page <= (expected?.totalPages ?? 1); page++) {
+        currentPage = page;
+        if (requestCount >= (verifiedPageCount === null ? 2 : 2 * verifiedPageCount)) {
+          throw fail("request_budget", "ถึงขีดจำกัดคำขอสำหรับการโหลดสองรอบ");
         }
-        seen.add(item._id);
-        allItems.push(item);
+        if (page > 1) await new Promise((resolve) => setTimeout(resolve, 500));
+        const url = "https://api.simummuangmarket.com/api/app/products" +
+          `?page=${page}` + "&limit=20";
+        requestCount++;
+        let response;
+        try { response = await fetch(url, {
+          headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 Farm-Dashboard/1.0" },
+          signal: AbortSignal.timeout(30000),
+        }); } catch { throw fail("network", "การเชื่อมต่อเครือข่าย DNS หรือ TLS ล้มเหลว"); }
+        if (!response.ok) {
+          const status = Number.isSafeInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : "unknown";
+          throw fail("http_error", `HTTP ${status}: หยุดโหลดโดยไม่ลองซ้ำอัตโนมัติ`);
+        }
+        let body;
+        try { body = await response.json(); }
+        catch { throw fail("invalid_json", "ไม่สามารถอ่าน JSON จากตลาดได้"); }
+        const data = body?.data;
+        if (!Array.isArray(data?.data) || !Number.isSafeInteger(data.total) || data.total < 0 ||
+            !Number.isSafeInteger(data.totalPages) || data.totalPages < 1 || data.totalPages > 60 ||
+            data.currentPage !== page || data.perPage !== 20 ||
+            data.itemCount !== data.data.length ||
+            data.totalPages !== Math.max(1, Math.ceil(data.total / data.perPage))) {
+          throw fail("invalid_pagination", "โครงสร้างหรือ metadata ของ pagination ไม่ถูกต้อง", true);
+        }
+        verifiedPageCount ??= data.totalPages;
+        expected ??= { total: data.total, totalPages: data.totalPages };
+        if (data.total !== expected.total || data.totalPages !== expected.totalPages) {
+          throw fail("pagination_changed", "metadata ของ pagination เปลี่ยนระหว่างโหลด", true);
+        }
+        const expectedCount = page < expected.totalPages ? 20 : expected.total - (page - 1) * 20;
+        if (data.data.length !== expectedCount) throw fail("incomplete_page", "จำนวนสินค้าในหน้าไม่ครบ", true);
+        for (const item of data.data) {
+          if (typeof item?._id !== "string" || !item._id) throw fail("missing_product_id", "ข้อมูลไม่มีรหัสสินค้า", true);
+          if (seen.has(item._id)) throw fail("duplicate_product_id", "พบรหัสสินค้าซ้ำระหว่างโหลด", true);
+          seen.add(item._id);
+          allItems.push(item);
+        }
+        pages.push(page);
       }
-      pages.push(page);
+      if (allItems.length !== expected.total) throw fail("incomplete_total", "จำนวนสินค้ารวมไม่ครบ", true);
+      attempts.push({ attempt, issue: "complete", requestCount: requestCount - requestsBefore,
+        loadedPages: pages, loadedCount: allItems.length });
+      console.log("SIMUMUANG_LOAD", JSON.stringify(diagnostics()));
+      return { items: allItems, dataCompleteness: { complete: true, ...expected,
+        loadedPages: pages, loadedCount: allItems.length, diagnostics: diagnostics() }, fetchedAt: new Date(Date.now()).toISOString() };
+    } catch (error) {
+      attempts.push({ attempt, failedPage: currentPage, issue: error.issue ?? "internal_error",
+        requestCount: requestCount - requestsBefore, loadedPages: pages, loadedCount: allItems.length });
+      // Never log upstream exception text, headers or response bodies.
+      console.warn("SIMUMUANG_LOAD", JSON.stringify(diagnostics()));
+      if (error.retryable && attempt === 1 && requestCount < diagnostics().requestBudget) {
+        await new Promise((resolve) => setTimeout(resolve, SIMUMUANG_RETRY_DELAY_MS));
+        continue;
+      }
+      const message = error.issue ? error.message : "เกิดข้อผิดพลาดระหว่างตรวจสอบข้อมูลตลาด";
+      const failure = new Error(`รอบ ${attempt} หน้า ${currentPage}: ${message}`);
+      failure.dataCompleteness = { complete: false, ...expected, loadedPages: pages,
+        failedPage: currentPage, loadedCount: allItems.length, reason: failure.message,
+        diagnostics: diagnostics() };
+      throw failure;
     }
-    if (allItems.length !== expected.total) throw new Error("incomplete total");
-    return { items: allItems, dataCompleteness: { complete: true, ...expected,
-      loadedPages: pages, loadedCount: allItems.length }, fetchedAt: new Date(Date.now()).toISOString() };
-  } catch (error) {
-    error.dataCompleteness = { complete: false, ...expected, loadedPages: pages,
-      failedPage: pages.length + 1, loadedCount: allItems.length, reason: error.message };
-    throw error;
   }
 }
 
@@ -874,26 +916,36 @@ async function getSimumuangPrice(crop) {
       snapshot = simuMuangItemsCache;
     } else {
       if (!simuMuangLoadingPromise) {
+        if (simuMuangFailure && Date.now() < simuMuangFailure.retryAt) throw simuMuangFailure.error;
         const loading = loadSimumuangItems().then((loaded) => {
           simuMuangItemsCache = loaded;
           simuMuangCacheTime = Date.now();
+          simuMuangFailure = null;
           return loaded;
         });
         simuMuangLoadingPromise = loading;
         // Reset once per load, including rejection; concurrent readers share it.
         loading.then(() => { if (simuMuangLoadingPromise === loading) simuMuangLoadingPromise = null; },
-          () => { if (simuMuangLoadingPromise === loading) simuMuangLoadingPromise = null; });
+          (error) => {
+            const failedAt = Date.now();
+            simuMuangFailure = { error, failedAt, retryAt: failedAt + SIMUMUANG_FAILURE_COOLDOWN_MS };
+            if (simuMuangLoadingPromise === loading) simuMuangLoadingPromise = null;
+          });
       }
       snapshot = await simuMuangLoadingPromise;
     }
     return validateMarketPrice({ ...getSimumuangPriceFromItems(crop, snapshot.items),
       fetchedAt: snapshot.fetchedAt, dataCompleteness: snapshot.dataCompleteness });
   } catch (error) {
+    const failure = error === simuMuangFailure?.error ? simuMuangFailure : null;
     return { market: "ตลาดสี่มุมเมือง", available: false, status: "incomplete_data",
       reason: "ตลาดโหลดข้อมูลไม่สำเร็จ: " + error.message,
       productId: crop.simummuangProductId ?? null, productName: crop.simummuangProductName ?? null,
-      selectedSize: crop.simummuangSize ?? null, fetchedAt: new Date(Date.now()).toISOString(),
-      dataCompleteness: error.dataCompleteness ?? { complete: false } };
+      selectedSize: crop.simummuangSize ?? null, fetchedAt: new Date(failure?.failedAt ?? Date.now()).toISOString(),
+      dataCompleteness: error.dataCompleteness ?? { complete: false },
+      ...(failure && Date.now() < failure.retryAt ? {
+        cooldown: { active: true, retryAt: new Date(failure.retryAt).toISOString(),
+          retryAfterMs: failure.retryAt - Date.now() } } : {}) };
   }
 }
 

@@ -205,3 +205,34 @@ shared-file server contexts, concurrent calls, Bangkok midnight และ workfl
 ตรงกับพฤติกรรมเดิมทุกพืช ไม่มีการเขียนไฟล์จริงหรือแก้ workflow
 freshnessScope=at_observation และ freshness.evaluatedAt ระบุว่าความสดของประวัติ
 เป็นสถานะ ณ เวลารับข้อมูล ไม่ได้อ้างว่าราคาในอดีตเป็นราคาปัจจุบันของวันนี้
+
+## ขั้นตอน 64: Retry เมื่อ pagination ไม่สอดคล้องกัน
+
+- คง URL/พารามิเตอร์เดิมและ validation ทุกข้อ (รวมเพดาน 60 หน้า)
+- โหลดได้สูงสุดสองรอบ พัก 30 วินาทีก่อนรอบที่สอง เฉพาะ metadata/schema pagination
+  ไม่สอดคล้อง จำนวนสินค้าไม่ครบ รหัสหายหรือซ้ำ ทุกครั้งเริ่มหน้า 1 และไม่ผสม items ข้ามรอบ
+- HTTP ที่ไม่สำเร็จทุกชนิด รวม 403/429/5xx, network/DNS/TLS และ JSON อ่านไม่ได้
+  หยุดทันทีโดยไม่ retry อัตโนมัติ แม้เกิดระหว่างรอบที่สอง
+- เพดานคำขอรวมเท่ากับสองเท่าของ totalPages ชุดแรกที่ผ่านการตรวจ metadata
+  ถ้ายังไม่ยืนยัน metadata จำกัดการอ่านหน้า 1 สองครั้ง เมื่อยืนยันได้ใช้เพดานตามจำนวนหน้านั้น
+  หากรอบสองโตขึ้นจะไม่ขยาย budget: 49 หน้าไม่เกิน 98 GET, เพดานสูงสุด 120 GET
+- คง successful cache 5 นาที และ validate freshness ใหม่ทุกครั้งที่ใช้ข้อมูล ไม่คืน cache
+  ที่พ้นอายุเมื่อ refresh ล้มเหลว ไม่แคชข้อมูลบางส่วนเป็นข้อมูลสำเร็จ
+- ทั้งรอบแรกและ retry ใช้ loading Promise ร่วมกัน หลังล้มเหลวพัก 2 นาทีเริ่มจากเวลาจบ
+  ชุดการโหลด คำขอในช่วงพักยังคืน incomplete_data พร้อม cooldown.retryAt/retryAfterMs
+  ไม่โหลดต้นทางใหม่ เมื่อพ้นช่วงพักคำขอถัดไปจึงเริ่มโหลดได้
+- cooldown และ Promise เป็น in-memory ต่อ process ไม่ใช่ rate limit ข้ามหลาย instance
+- dataCompleteness.diagnostics และ SIMUMUANG_LOAD log เก็บรอบ/หน้าที่ล้มเหลว ประเภทปัญหา
+  loadedPages/loadedCount จำนวนคำขอและ budget โดยไม่บันทึก upstream exception/body/headers
+- diagnostics.snapshotConsistency=not_confirmed แม้ผ่านครบทุก validation เพราะต้นทาง
+  ยังไม่ได้รับรอง snapshot เวลาเดียวกัน การ retry ลดโอกาสลำดับเคลื่อน แต่ไม่รับรอง snapshot
+- ตลาดศรีเมือง นโยบาย unknown_timestamp, quality/freshness, ประวัติ schema 3 และ frontend
+  ไม่เปลี่ยน ชุดข้อมูลสี่มุมเมืองไม่ครบยังไม่เข้าค่าเฉลี่ยหรือประวัติ
+- ทดสอบหลายหน้าด้วย Mock เท่านั้น ไฟล์ fixture และประวัติจริงไม่เปลี่ยน
+  ปรับ assertion เดิมที่เคยคาดให้เรียกต้นทางซ้ำทันที ให้ตรวจการพักหลังล้มเหลวแทน
+
+ผลตรวจขั้นตอน 64: Backend 222 + Frontend 8 = 230 กรณี ผ่านบน Node.js 22.23.4
+และ 24.19.0 (ชุดเดิม 203 + ใหม่ 27 ไม่มี skipped) รวมกรณีคำขอใหม่เข้าระหว่างพัก retry
+โดยยังใช้ Promise เดิม; cooldown ไม่เปลี่ยน fetchedAt ให้ดูเหมือนเพิ่งดึงข้อมูลใหม่
+node --check, git diff --check และ build บน Node 22 ผ่าน (มีคำเตือน bundle >500 kB เดิม)
+ไม่ได้ทดสอบ API จริงหรือ Chromium ซ้ำในรอบนี้

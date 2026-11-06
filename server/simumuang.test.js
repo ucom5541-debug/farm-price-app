@@ -202,10 +202,12 @@ for (const key of Object.keys(CROPS)) {
 // Exercise real filesystem lock/fsync/rename operations without opening network ports.
 const testDirectories = [];
 after(() => { for (const directory of testDirectories) fs.rmSync(directory, { recursive: true, force: true }); });
-async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z') }, initialHistory = [], policyEnv = {}, sharedHistory = null) {
+async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z') }, initialHistory = [], policyEnv = {}, sharedHistory = null, timer = null) {
   let handler;
   let calls = 0;
   let writes = 0;
+  const delays = [];
+  const warnings = [];
   let failureStage = null;
   const directory = sharedHistory ? new URL('./', sharedHistory) : pathToFileURL(fs.mkdtempSync('/tmp/farm-history-test-') + '/');
   if (!sharedHistory) testDirectories.push(directory);
@@ -233,11 +235,11 @@ async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z'
   };
   const ctx = vm.createContext({ URL, AbortSignal, randomUUID,
     Date: class extends Date { static now() { return clock.now; } },
-    console: { log() {}, error() {}, warn() {} },
+    console: { log() {}, error() {}, warn(...args) { warnings.push(args); } },
     process: { env: policyEnv, argv: [], pid: process.pid }, tls: { rootCertificates: [] }, Agent: class {},
     fs: mockedFs,
     http: { createServer(fn) { handler = fn; return { listen() {} }; } },
-    setTimeout: (fn) => { fn(); },
+    setTimeout: (fn, delay) => { delays.push(delay); if (timer) return timer(fn, delay); fn(); },
     fetch: async (url) => {
       const parsed = new URL(url);
       assert.equal(parsed.origin + parsed.pathname, 'https://api.simummuangmarket.com/api/app/products');
@@ -252,6 +254,7 @@ async function sandbox(respond, clock = { now: Date.parse('2026-11-04T06:00:00Z'
   await vm.runInContext(`(async () => {${code}\nglobalThis.api={CROPS, getSimumuangPrice, savePriceHistory, getCropMarketData, saveDailyPrices, saveOnceExitCode, buildDailyHistory, validateMarketPrice, inspectPriceFreshness, PRICE_POLICY, setSrimuang: (load) => { getSrimuangPrice = load; }};})()`, ctx);
   return { historyFile, directory, failWrites: (fail) => { failureStage = fail ? 'write' : null; },
     failAt: (stage) => { failureStage = stage; }, context: ctx, api: ctx.api, calls: () => calls, writes: () => writes,
+    delays, warnings,
     rawHistory: () => JSON.parse(fs.readFileSync(historyFile, 'utf8')),
     request: async (path) => {
       let status, body;
@@ -294,7 +297,7 @@ for (const [label, respond] of [
     assert.equal(result.dataCompleteness.complete, false);
     const calls = box.calls();
     await box.api.getSimumuangPrice(chosen('kale'));
-    assert.ok(box.calls() > calls);
+    assert.equal(box.calls(), calls, 'failure cooldown must prevent another load');
     const data = await box.api.getCropMarketData('kale');
     assert.equal(data.historyEligible, false);
     assert.equal(box.api.savePriceHistory('kale', { ...data, averagePrice: 25 }), false);
@@ -370,6 +373,9 @@ test('failed expired refresh never serves stale cache as current', async () => {
   assert.equal(failed.available, false);
   assert.equal(failed.dataCompleteness.complete, false);
   assert.equal(box.calls(), 2);
+  await box.api.getSimumuangPrice(chosen('kale'));
+  assert.equal(box.calls(), 2, 'expired success cache must not bypass failure cooldown');
+  clock.now += 120000;
   await box.api.getSimumuangPrice(chosen('kale'));
   assert.equal(box.calls(), 3);
 });
@@ -1091,4 +1097,280 @@ test('duplicate market observations in existing metadata never replace the first
   assert.equal(data[0].sourceCount, 1);
   assert.equal(data[0].averagePrice, 25);
   assert.equal(flow.box.rawHistory().length, 2);
+});
+
+// Step 64: synthetic 49-page catalog. No upstream GETs or fixture edits.
+const fullCatalog = () => [
+  ...Object.keys(CROPS).map((key) => product(key, { large: { min: 40, max: 60 } })),
+  ...Array.from({ length: 957 }, (_, index) => ({ _id: `pagination-only-${index}` })),
+];
+const catalogPage = (items, n) => page(items.slice((n - 1) * 20, n * 20), n, items.length);
+
+test('49 pages load once for ten simultaneous crops and preserve confirmed large identities', async () => {
+  const items = fullCatalog();
+  const box = await sandbox((n) => catalogPage(items, n));
+  const results = await Promise.all(Object.keys(CROPS).map((key) => box.api.getSimumuangPrice(box.api.CROPS[key])));
+  assert.equal(box.calls(), 49);
+  for (const [index, key] of Object.keys(CROPS).entries()) {
+    const row = results[index];
+    assert.equal(row.available, true);
+    assert.equal(row.productId, CROPS[key].simummuangProductId);
+    assert.equal(row.productName, CROPS[key].simummuangProductName);
+    assert.equal(row.selectedSize, 'large');
+    assert.equal(row.mid, 50);
+    assert.equal(row.freshness.status, 'current');
+    assert.equal(row.dataCompleteness.loadedCount, 967);
+    assert.equal(row.dataCompleteness.loadedPages.length, 49);
+    assert.equal(row.dataCompleteness.diagnostics.requestCount, 49);
+    assert.equal(row.dataCompleteness.diagnostics.requestBudget, 98);
+    assert.equal(row.dataCompleteness.diagnostics.snapshotConsistency, 'not_confirmed');
+  }
+  await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(box.calls(), 49, 'successful catalog stays cached');
+  assert.equal(box.delays.filter((delay) => delay === 500).length, 48);
+  assert.equal(box.delays.includes(30000), false);
+});
+
+test('duplicate across pages retries from page one and uses only the second generation', async () => {
+  const items = fullCatalog();
+  const earlier = copy(items);
+  earlier[1].price.large = { min: 900, max: 1000 };
+  const sequence = [];
+  const box = await sandbox((n, calls) => {
+    sequence.push(n);
+    if (calls === 2) return page([earlier[19], ...earlier.slice(21, 40)], 2, 967);
+    return catalogPage(calls === 1 ? earlier : items, n);
+  });
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, true);
+  assert.equal(row.mid, 50, 'earlier attempt prices must not leak into the result');
+  assert.deepEqual(sequence.slice(0, 4), [1, 2, 1, 2]);
+  assert.equal(box.calls(), 51);
+  assert.equal(box.delays.filter((delay) => delay === 30000).length, 1);
+  const d = row.dataCompleteness.diagnostics;
+  assert.equal(d.attempts.length, 2);
+  assert.equal(d.attempts[0].issue, 'duplicate_product_id');
+  assert.equal(d.attempts[0].failedPage, 2);
+  assert.equal(d.attempts[1].loadedCount, 967);
+});
+
+for (const issue of ['duplicate', 'short', 'metadata']) {
+  test(`two complete-length attempts reject ${issue}, cap requests at 98 and never persist`, async () => {
+    const items = fullCatalog();
+    const box = await sandbox((n) => {
+      if (n !== 49) return catalogPage(items, n);
+      if (issue === 'duplicate') return page([items[0], ...items.slice(961)], 49, 967);
+      if (issue === 'short') return page(items.slice(961), 49, 967);
+      return page(items.slice(960), 49, 968);
+    });
+    const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+    assert.equal(row.available, false);
+    assert.equal(row.status, 'incomplete_data');
+    assert.equal(box.calls(), 98);
+    assert.equal(row.dataCompleteness.diagnostics.attempts.length, 2);
+    assert.equal(row.dataCompleteness.failedPage, 49);
+    assert.equal(box.delays.filter((delay) => delay === 30000).length, 1);
+    const data = await box.api.getCropMarketData('kale');
+    assert.equal(data.averagePrice, null);
+    assert.equal(data.historyEligible, false);
+    assert.equal(box.api.savePriceHistory('kale', data), false);
+    assert.equal(box.writes(), 0);
+    assert.deepEqual(box.rawHistory(), []);
+    assert.equal(box.calls(), 98, 'cooldown rejects subsequent reads without network work');
+  });
+}
+
+test('changed metadata during the first attempt recovers with fresh independent metadata', async () => {
+  const items = fullCatalog(); const sequence = [];
+  const box = await sandbox((n, calls) => {
+    sequence.push(n);
+    return calls === 2 ? page(items.slice(20, 40), 2, 968) : catalogPage(items, n);
+  });
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, true);
+  assert.equal(row.dataCompleteness.total, 967);
+  assert.equal(row.dataCompleteness.diagnostics.attempts[0].issue, 'pagination_changed');
+  assert.deepEqual(sequence.slice(0, 3), [1, 2, 1]);
+  assert.equal(box.calls(), 51);
+});
+
+for (const extra of [{ totalPages: 61 }, { totalPages: 48 }, { currentPage: 2 }, { perPage: 10 }]) {
+  test(`invalid page metadata is bounded to two page-one requests: ${JSON.stringify(extra)}`, async () => {
+    const box = await sandbox((n) => {
+      assert.equal(n, 1);
+      return page(fullCatalog().slice(0, 20), 1, 967, extra);
+    });
+    const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+    assert.equal(row.available, false);
+    assert.equal(box.calls(), 2);
+    assert.equal(row.dataCompleteness.diagnostics.requestBudget, 2);
+    assert.equal(row.dataCompleteness.diagnostics.attempts[1].issue, 'invalid_pagination');
+  });
+}
+
+for (const http of [403, 429, 503]) {
+  test(`HTTP ${http} stops without automatic retry or retry delay`, async () => {
+    const box = await sandbox(() => ({ ok: false, status: http }));
+    const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+    assert.equal(row.available, false);
+    assert.equal(box.calls(), 1);
+    assert.equal(row.dataCompleteness.diagnostics.attempts.length, 1);
+    assert.equal(row.dataCompleteness.diagnostics.attempts[0].issue, 'http_error');
+    assert.match(row.reason, new RegExp(`HTTP ${http}`));
+    assert.equal(box.delays.includes(30000), false);
+    await box.api.getSimumuangPrice(box.api.CROPS.kale);
+    assert.equal(box.calls(), 1);
+  });
+}
+
+for (const code of ['EAI_AGAIN', 'ENOTFOUND', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ECONNRESET']) {
+  test(`network failure ${code} is not retried and diagnostics redact upstream details`, async () => {
+    const box = await sandbox(() => { throw Object.assign(new Error('https://user:SECRET@host/?api_key=SECRET'), { cause: { code } }); });
+    const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+    assert.equal(row.available, false);
+    assert.equal(box.calls(), 1);
+    assert.equal(row.dataCompleteness.diagnostics.attempts[0].issue, 'network');
+    assert.equal(box.delays.includes(30000), false);
+    assert.equal(JSON.stringify([row, box.warnings]).includes('SECRET'), false);
+  });
+}
+
+test('HTTP failure in the retry stops immediately instead of starting another full load', async () => {
+  const items = fullCatalog();
+  const box = await sandbox((n, calls) => calls === 1 ? page(items.slice(0, 19), 1, 967) : { ok: false, status: 503 });
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(box.calls(), 2);
+  assert.equal(row.available, false);
+  assert.equal(row.dataCompleteness.diagnostics.attempts[1].issue, 'http_error');
+  assert.equal(box.delays.filter((delay) => delay === 30000).length, 1);
+});
+
+test('failure cooldown is shared by ten crops and expires at its exact boundary', async () => {
+  const clock = { now: Date.parse('2026-11-04T06:00:00Z') }; const items = fullCatalog();
+  let recovered = false;
+  const box = await sandbox((n) => recovered ? catalogPage(items, n) : { ok: false, status: 503 }, clock);
+  const results = await Promise.all(Object.values(box.api.CROPS).map((crop) => box.api.getSimumuangPrice(crop)));
+  assert.equal(box.calls(), 1);
+  for (const row of results) {
+    assert.equal(row.status, 'incomplete_data');
+    assert.equal(row.cooldown.active, true);
+    assert.equal(row.cooldown.retryAfterMs, 120000);
+  }
+  recovered = true; clock.now += 119999;
+  const cooling = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(cooling.available, false);
+  assert.equal(cooling.fetchedAt, results[0].fetchedAt, 'cooldown does not pretend another fetch occurred');
+  assert.equal(box.calls(), 1);
+  clock.now++;
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, true);
+  assert.equal(row.cooldown, undefined);
+  assert.equal(box.calls(), 50);
+  await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(box.calls(), 50);
+});
+
+test('a larger second catalog cannot exceed twice the initially verified page count', async () => {
+  const items = fullCatalog();
+  const larger = [...items, ...Array.from({ length: 233 }, (_, n) => ({ _id: `new-extra-${n}` }))];
+  const box = await sandbox((n, calls) => calls < 49 ? catalogPage(items, n) :
+    calls === 49 ? page([items[0], ...items.slice(961)], 49, 967) : catalogPage(larger, n));
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, false, JSON.stringify(row.dataCompleteness));
+  assert.equal(box.calls(), 98);
+  assert.equal(row.dataCompleteness.diagnostics.requestBudget, 98);
+  assert.equal(row.dataCompleteness.diagnostics.attempts[1].issue, 'request_budget');
+});
+
+test('cooldown preserves all four HTTP envelopes and leaves valid other-market policy unchanged', async () => {
+  const box = await sandbox(() => ({ ok: false, status: 503 }));
+  box.api.setSrimuang(async () => ({ market: 'ตลาดศรีเมือง ราชบุรี', available: true,
+    min: 20, max: 30, mid: 25, unit: 'บาท/กก.' }));
+  const all = await box.request('/api/prices');
+  assert.equal(all.status, 200);
+  assert.equal(all.body.data.length, 10);
+  for (const row of all.body.data) {
+    assert.equal(row.averagePrice, 25);
+    assert.equal(row.sourceCount, 1);
+    assert.equal(row.markets[0].freshness.status, 'unknown_timestamp');
+    assert.equal(row.markets[0].verifiedCurrent, false);
+    assert.equal(row.markets[1].status, 'incomplete_data');
+  }
+  const single = await box.request('/api/price?crop=kale');
+  assert.equal(single.status, 200);
+  assert.equal(single.body.data.averagePrice, 25);
+  const legacy = await box.request('/api/simumuang');
+  assert.equal(legacy.status, 200);
+  assert.equal(legacy.body.data.data.length, 10);
+  const history = await box.request('/api/history');
+  assert.equal(history.status, 200);
+  assert.equal(history.body.count, 0);
+  assert.equal(box.calls(), 1);
+  assert.equal(box.writes(), 0);
+});
+
+test('ten concurrent readers share the retry as well as the initial attempt', async () => {
+  const items = fullCatalog();
+  const box = await sandbox((n, calls) => calls === 2 ? page([items[0], ...items.slice(21, 40)], 2, 967) : catalogPage(items, n));
+  const rows = await Promise.all(Object.values(box.api.CROPS).map((crop) => box.api.getSimumuangPrice(crop)));
+  assert.equal(box.calls(), 51);
+  assert.equal(box.delays.filter((delay) => delay === 30000).length, 1);
+  assert.equal(rows.length, 10);
+  for (const row of rows) {
+    assert.equal(row.available, true);
+    assert.equal(row.dataCompleteness.diagnostics.requestCount, 51);
+    assert.equal(row.dataCompleteness.loadedCount, 967);
+  }
+});
+
+test('missing ids cause one independent reload rather than silently dropping records', async () => {
+  const items = fullCatalog();
+  const box = await sandbox((n, calls) => calls === 1 ? page([{}, ...items.slice(1, 20)], 1, 967) : catalogPage(items, n));
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, true);
+  assert.equal(row.dataCompleteness.diagnostics.attempts[0].issue, 'missing_product_id');
+  assert.equal(row.dataCompleteness.diagnostics.attempts[0].loadedCount, 0);
+  assert.equal(row.dataCompleteness.loadedCount, 967);
+  assert.equal(box.calls(), 50);
+});
+
+test('unreadable JSON is not a retryable pagination mismatch and upstream text stays private', async () => {
+  const box = await sandbox(() => ({ ok: true, json: async () => { throw Error('PRIVATE_RESPONSE_TOKEN'); } }));
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, false);
+  assert.equal(row.dataCompleteness.diagnostics.attempts[0].issue, 'invalid_json');
+  assert.equal(box.calls(), 1);
+  assert.equal(box.delays.includes(30000), false);
+  assert.equal(JSON.stringify([row, box.warnings]).includes('PRIVATE_RESPONSE_TOKEN'), false);
+});
+
+test('the existing sixty-page guard caps two full failing attempts at 120 requests', async () => {
+  const items = [...fullCatalog(), ...Array.from({ length: 233 }, (_, n) => ({ _id: `max-pages-${n}` }))];
+  const box = await sandbox((n) => n === 60 ? page([items[0], ...items.slice(1181)], 60, 1200) : catalogPage(items, n));
+  const row = await box.api.getSimumuangPrice(box.api.CROPS.kale);
+  assert.equal(row.available, false);
+  assert.equal(box.calls(), 120);
+  assert.equal(row.dataCompleteness.diagnostics.requestCount, 120);
+  assert.equal(row.dataCompleteness.diagnostics.requestBudget, 120);
+  assert.equal(row.dataCompleteness.diagnostics.attempts.length, 2);
+});
+
+test('requests arriving during the retry pause await the existing loading promise', async () => {
+  const items = fullCatalog(); let resume;
+  let signalPaused;
+  const paused = new Promise((resolve) => { signalPaused = resolve; });
+  const box = await sandbox((n, calls) => calls === 2 ? page([items[0], ...items.slice(21, 40)], 2, 967) : catalogPage(items, n),
+    undefined, [], {}, null, (fn, delay) => {
+      if (delay === 30000) { resume = fn; signalPaused(); } else fn();
+    });
+  const first = box.api.getSimumuangPrice(box.api.CROPS.kale);
+  await paused;
+  assert.equal(box.calls(), 2);
+  const later = Object.values(box.api.CROPS).map((crop) => box.api.getSimumuangPrice(crop));
+  assert.equal(box.calls(), 2, 'joining readers must not start their own attempt');
+  resume();
+  const rows = await Promise.all([first, ...later]);
+  assert.equal(box.calls(), 51);
+  assert.equal(box.delays.filter((delay) => delay === 30000).length, 1);
+  for (const row of rows) assert.equal(row.available, true);
 });
