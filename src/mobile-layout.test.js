@@ -67,7 +67,22 @@ test('actual market JSX preserves prices and large size while safely presenting 
     { market: 'ตลาดสี่มุมเมือง', available: true, verifiedCurrent: true, productName: 'ต้นคะน้า',
       selectedSize: 'large', min: 42, max: 48, sourceUpdatedAt: '2026-11-05T01:00:00Z' },
   ] } }));
-  for (const text of ['ต้นคะน้า', '(large)', '42 - 48', 'ราคาปัจจุบันที่ผ่านการตรวจสอบ',
+  for (const text of ['ตลาดศรีเมือง ราชบุรี', 'ตลาดสี่มุมเมือง', 'ต้นคะน้า', '(large)', '42 - 48', 'ราคาปัจจุบันที่ผ่านการตรวจสอบ',
     'ตลาดโหลดข้อมูลไม่สำเร็จ', 'รายละเอียดการเชื่อมต่อที่ปลอดภัย', 'HTTP: 503']) assert.ok(html.includes(text));
   assert.ok(!html.includes('DO_NOT_EXPOSE'));
+});
+
+test('price page and combined-status headings describe both markets without claiming freshness', async () => {
+  const start = app.indexOf('<header', app.indexOf("if (page === 'prices')"));
+  const header = app.slice(start, app.indexOf('</header>', start) + '</header>'.length);
+  const statusHeading = app.match(/<h3>🏪[^<]*<\/h3>/)?.[0];
+  assert.ok(statusHeading, 'combined status heading exists');
+  const { code } = await transformWithOxc(`function View() { return (<>${header}${statusHeading}</>); }\nglobalThis.View=View;`,
+    'headings.jsx', { jsx: { runtime: 'classic' } });
+  const ctx = vm.createContext({ React });
+  vm.runInContext(code, ctx);
+  const html = renderToStaticMarkup(React.createElement(ctx.View));
+  assert.ok(html.includes('สถานะระบบราคาตลาด'));
+  assert.ok(html.includes('เปรียบเทียบราคาจากตลาดสี่มุมเมืองและตลาดศรีเมือง ราชบุรี'));
+  assert.ok(!html.includes('ข้อมูลล่าสุดจากตลาดสี่มุมเมือง'));
 });
