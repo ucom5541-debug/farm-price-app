@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import './App.css'
 
@@ -219,20 +219,84 @@ function buildDailyHistoryMap(history, selectedCrop) {
   return latestByDay
 }
 
+const EMPTY_HISTORY = []
+const INITIAL_MARKET_RESOURCE = { data: null, serverStatus: 'กำลังเชื่อมต่อ...' }
+
+// An effect owns each request. Rendering derives pending/error visibility from its key.
+function useRequestResource(key, load, initialValue) {
+  const [result, setResult] = useState(() => ({ key: null, value: initialValue, error: '' }))
+  const owner = useRef(null)
+
+  useEffect(() => {
+    if (key === null) return
+    const controller = new AbortController()
+    const request = { active: true, controller }
+    owner.current = request
+    const isCurrent = () => request.active && !controller.signal.aborted && owner.current === request
+
+    async function execute() {
+      try {
+        const value = await load(key, controller.signal)
+        if (!isCurrent()) return
+        setResult(previous => isCurrent() ? { key, value, error: '' } : previous)
+      } catch (err) {
+        if (!isCurrent() || err?.name === 'AbortError') return
+        console.error('โหลดข้อมูลไม่สำเร็จ', safeConnectionDetails(err?.message))
+        setResult(previous => isCurrent()
+          ? { ...previous, key, error: err.message || 'โหลดข้อมูลไม่สำเร็จ' }
+          : previous)
+      }
+    }
+    void execute()
+    return () => {
+      request.active = false
+      controller.abort()
+      if (owner.current === request) owner.current = null
+    }
+  }, [key, load])
+
+  const current = result.key === key
+  return { value: result.value, current, loading: key !== null && !current,
+    error: current ? result.error : '' }
+}
+
+async function fetchMarketResource(_key, signal) {
+  const response = await fetch(API_URL, { signal })
+  if (!response.ok) throw new Error(`Server ตอบกลับ ${response.status}`)
+  const data = await response.json()
+  const received = data?.data?.data || []
+  const usable = received.filter((item) => item.sourceCount > 0 && Number.isFinite(item.averagePrice))
+  const serverStatus = !usable.length
+    ? 'รับข้อมูลแล้ว แต่ยังไม่มีราคาที่ผ่านเกณฑ์'
+    : usable.every((item) => item.priceStatus === 'current')
+      ? 'รับข้อมูลแล้ว มีราคาปัจจุบันที่ผ่านการตรวจสอบ'
+      : 'รับข้อมูลแล้ว มีราคาเปรียบเทียบที่ยังยืนยันเวลาราคาไม่ได้'
+  return { data, serverStatus }
+}
+
+async function fetchHistoryResource(key, signal) {
+  const response = await fetch(`${API_BASE_URL}/api/history?crop=${encodeURIComponent(key.cropKey)}`, { signal })
+  if (!response.ok) throw new Error(`History Server ${response.status}`)
+  const result = await response.json()
+  if (!Array.isArray(result.data)) throw new Error('ข้อมูลประวัติไม่ถูกต้อง')
+  // Keep daily views from either one or two markets, including legacy history.
+  return result.data
+}
+
 function App() {
   const [page, setPage] = useState('home')
-  const [selectedCrop, setSelectedCrop] = useState(null)
-
-  const [serverStatus, setServerStatus] =
-    useState('กำลังเชื่อมต่อ...')
-
-  const [simumuangData, setSimumuangData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const [history, setHistory] = useState([])
-  const [historyError, setHistoryError] = useState('')
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyKey, setHistoryKey] = useState(null)
+  const selectedCrop = historyKey?.cropKey ?? null
+  const [marketVersion, setMarketVersion] = useState(0)
+  const marketRequest = useRequestResource(marketVersion, fetchMarketResource, INITIAL_MARKET_RESOURCE)
+  const historyRequest = useRequestResource(historyKey, fetchHistoryResource, EMPTY_HISTORY)
+  const simumuangData = marketRequest.value.data
+  const serverStatus = marketRequest.error ? 'เชื่อมต่อ Server ไม่สำเร็จ' : marketRequest.value.serverStatus
+  const loading = marketRequest.loading
+  const error = marketRequest.error
+  const history = historyRequest.current && !historyRequest.error ? historyRequest.value : EMPTY_HISTORY
+  const historyError = historyRequest.error
+  const historyLoading = historyRequest.loading
   const [chartDays, setChartDays] = useState(7)
 
   // API returns the append-only daily view; retain legacy deduplication as a safeguard.
@@ -276,69 +340,9 @@ function App() {
     .slice(-4)
     .reverse()
 
-  async function loadPriceHistory(cropKey) {
-    setHistoryLoading(true)
-    setHistoryError('')
-    setHistory([])
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/history?crop=${encodeURIComponent(cropKey)}`
-      )
-      if (!response.ok) throw new Error(`History Server ${response.status}`)
-
-      const result = await response.json()
-      if (!Array.isArray(result.data)) throw new Error('ข้อมูลประวัติไม่ถูกต้อง')
-      // ไม่กรอง sourceCount === 2 เพราะบางวันมีราคาจากเพียงตลาดเดียว
-      setHistory(result.data)
-    } catch (err) {
-      console.error('โหลดราคาย้อนหลังไม่สำเร็จ:', err)
-      setHistoryError(err.message || 'โหลดราคาย้อนหลังไม่สำเร็จ')
-    } finally {
-      setHistoryLoading(false)
-    }
+  function loadMarketData() {
+    setMarketVersion(version => version + 1)
   }
-  async function loadMarketData() {
-    try {
-      setLoading(true)
-      setError('')
-
-      const response = await fetch(API_URL)
-
-      if (!response.ok) {
-        throw new Error(`Server ตอบกลับ ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      setSimumuangData(data)
-      const received = data?.data?.data || []
-      const usable = received.filter((item) => item.sourceCount > 0 && Number.isFinite(item.averagePrice))
-      setServerStatus(!usable.length
-        ? 'รับข้อมูลแล้ว แต่ยังไม่มีราคาที่ผ่านเกณฑ์'
-        : usable.every((item) => item.priceStatus === 'current')
-          ? 'รับข้อมูลแล้ว มีราคาปัจจุบันที่ผ่านการตรวจสอบ'
-          : 'รับข้อมูลแล้ว มีราคาเปรียบเทียบที่ยังยืนยันเวลาราคาไม่ได้')
-    } catch (err) {
-      console.error('โหลดข้อมูลราคาไม่สำเร็จ', safeConnectionDetails(err?.message))
-
-      setServerStatus('เชื่อมต่อ Server ไม่สำเร็จ')
-      setError(err.message || 'ดึงข้อมูลไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadMarketData()
-  }, [])
-
-useEffect(() => {
-  if (selectedCrop) {
-    loadPriceHistory(selectedCrop)
-  } else {
-    setHistory([])
-  }
-}, [selectedCrop])
 
   const simumuangItems = useMemo(() => {
     return simumuangData?.data?.data || []
@@ -359,7 +363,9 @@ useEffect(() => {
   }
 
   function openCrop(cropKey) {
-    setSelectedCrop(cropKey)
+    setHistoryKey(previous => previous?.cropKey === cropKey ? previous : {
+      cropKey, version: (previous?.version ?? 0) + 1,
+    })
     setPage('crop')
   }
 

@@ -86,3 +86,48 @@ test('price page and combined-status headings describe both markets without clai
   assert.ok(html.includes('เปรียบเทียบราคาจากตลาดสี่มุมเมืองและตลาดศรีเมือง ราชบุรี'));
   assert.ok(!html.includes('ข้อมูลล่าสุดจากตลาดสี่มุมเมือง'));
 });
+
+function transportSandbox(fetch) {
+  const ctx = vm.createContext({ fetch, API_URL: 'https://test.invalid/api/simumuang', API_BASE_URL: 'https://test.invalid' });
+  vm.runInContext(app.slice(app.indexOf('const EMPTY_HISTORY'), app.indexOf('function App()')) +
+    ';globalThis.transport={fetchMarketResource,fetchHistoryResource};', ctx);
+  return ctx.transport;
+}
+
+test('market transport keeps API data and current/unverified/no-price status semantics', async () => {
+  for (const [rows, expected] of [
+    [[{ sourceCount: 2, averagePrice: 45, priceStatus: 'current' }], 'มีราคาปัจจุบันที่ผ่านการตรวจสอบ'],
+    [[{ sourceCount: 1, averagePrice: 45, priceStatus: 'unverified_freshness' }], 'ยังยืนยันเวลาราคาไม่ได้'],
+    [[{ sourceCount: 0, averagePrice: null }], 'ยังไม่มีราคาที่ผ่านเกณฑ์'],
+  ]) {
+    const payload = { data: { data: rows } };
+    const api = transportSandbox(async () => ({ ok: true, json: async () => payload }));
+    const result = await api.fetchMarketResource(0, new AbortController().signal);
+    assert.equal(result.data, payload);
+    assert.ok(result.serverStatus.includes(expected));
+  }
+});
+
+test('history transport preserves legacy and schema3 rows and passes the abort signal', async () => {
+  const rows = [{ crop: 'kale', averagePrice: 25 }, { schemaVersion: 3, crop: 'kale', averagePrice: 50 }];
+  const controller = new AbortController(); let request;
+  const api = transportSandbox(async (url, options) => { request = { url, options }; return { ok: true, json: async () => ({ data: rows }) }; });
+  assert.equal(await api.fetchHistoryResource({ cropKey: 'kale', version: 2 }, controller.signal), rows);
+  assert.equal(request.url, 'https://test.invalid/api/history?crop=kale');
+  assert.equal(request.options.signal, controller.signal);
+});
+
+test('transports reject HTTP errors and malformed history without inventing data', async () => {
+  const api = transportSandbox(async () => ({ ok: false, status: 503 }));
+  await assert.rejects(api.fetchMarketResource(0), /Server ตอบกลับ 503/);
+  await assert.rejects(api.fetchHistoryResource({ cropKey: 'kale' }), /History Server 503/);
+  const malformed = transportSandbox(async () => ({ ok: true, json: async () => ({ data: {} }) }));
+  await assert.rejects(malformed.fetchHistoryResource({ cropKey: 'kale' }), /ข้อมูลประวัติไม่ถูกต้อง/);
+});
+
+test('market transport forwards cancellation and does not convert aborts into successful data', async () => {
+  const controller = new AbortController(); controller.abort();
+  const aborted = new Error('cancelled'); aborted.name = 'AbortError';
+  const api = transportSandbox(async (_url, options) => { assert.equal(options.signal, controller.signal); throw aborted; });
+  await assert.rejects(api.fetchMarketResource(0, controller.signal), (error) => error === aborted);
+});
