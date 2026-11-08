@@ -20,7 +20,7 @@ const srimuangAgent = new Agent({
 const PORT = Number(process.env.PORT || 3001);
 // Always use the history file next to this server.js, regardless of cwd.
 const HISTORY_FILE = new URL("./price-history.json", import.meta.url);
-let priceHistory = [];
+let priceHistory;
 
 // Do not quietly overwrite history if the JSON file is absent or damaged.
 if (!fs.existsSync(HISTORY_FILE)) {
@@ -194,7 +194,7 @@ function savePriceHistory(cropKey, data) {
     // Cooperative local writers only: fail rather than remove another writer's lock.
     try { lockFd = fs.openSync(lock, "wx", 0o600); }
     catch (error) {
-      if (error.code === "EEXIST") throw new Error("history_busy: มีผู้เขียนประวัติอยู่แล้ว ห้ามลบ lock อัตโนมัติ");
+      if (error.code === "EEXIST") throw new Error("history_busy: มีผู้เขียนประวัติอยู่แล้ว ห้ามลบ lock อัตโนมัติ", { cause: error });
       throw error;
     }
     // Reload inside the lock so another process's completed append cannot be lost.
@@ -372,9 +372,6 @@ const CROPS = {
 
 const SRIMUANG_URL =
   "https://www.taladsrimuang.com/site/product/report_all.php?id=1";
-
-const SIMUMUANG_API =
-  "https://api.simummuangmarket.com/api/app/products?page=1&limit=20&isShow=true&sortBy=sort_th&sortOrder=asc";
 
 // ==========================================
 // Utility
@@ -1025,7 +1022,7 @@ async function getCropMarketData(
       return validateMarketPrice({ ...result,
         productName: result.productName ?? null,
         fetchedAt: result.fetchedAt ?? new Date(Date.now()).toISOString() });
-    } catch (error) {
+    } catch {
       return { market, available: false, historyEligible: false, status: "load_failed",
         reason: "ตลาดโหลดข้อมูลไม่สำเร็จ", fetchedAt: new Date(Date.now()).toISOString(),
         quality: { status: "load_failed" } };
@@ -1233,7 +1230,7 @@ if (url.pathname === "/api/history") {
     const records = readPriceHistory();
     history = buildDailyHistory(records, cropKey);
     priceHistory = records;
-  } catch (error) {
+  } catch {
     res.writeHead(500);
     return res.end(JSON.stringify({ status: "error", message: "อ่านประวัติราคาไม่สำเร็จ กรุณาตรวจสอบไฟล์ต้นฉบับ" }));
   }
