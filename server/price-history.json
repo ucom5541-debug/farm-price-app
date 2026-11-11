@@ -6964,5 +6964,95 @@
     "maxPrice": 17,
     "sourceCount": 2,
     "timestamp": "2026-11-10T08:24:22.763Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 152.5,
+    "minPrice": 140,
+    "maxPrice": 170,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:10.565Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 35.5,
+    "minPrice": 28,
+    "maxPrice": 44,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:11.935Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 8,
+    "minPrice": 6,
+    "maxPrice": 10,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:12.240Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 42.5,
+    "minPrice": 35,
+    "maxPrice": 50,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:12.560Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 125,
+    "minPrice": 100,
+    "maxPrice": 160,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:12.863Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 30,
+    "minPrice": 25,
+    "maxPrice": 35,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:13.168Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 50.25,
+    "minPrice": 35,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:13.480Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 100,
+    "minPrice": 80,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:13.781Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 45.5,
+    "minPrice": 32,
+    "maxPrice": 60,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:14.090Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 16.75,
+    "minPrice": 10,
+    "maxPrice": 25,
+    "sourceCount": 2,
+    "timestamp": "2026-11-11T07:44:14.382Z"
   }
 ]
