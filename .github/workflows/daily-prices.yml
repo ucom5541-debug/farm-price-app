@@ -2,26 +2,39 @@ name: Daily Farm Market Prices
 
 on:
   schedule:
-    # 08:17 Thailand = 01:17 UTC (GitHub schedule can be delayed)
+    # 08:17 Thailand = 01:17 UTC (GitHub schedule may be delayed)
     - cron: "17 1 * * *"
   workflow_dispatch:
 
+# Least privilege by default. Only the isolated commit job gets write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: farm-market-daily
   cancel-in-progress: false
 
 jobs:
-  save-daily-prices:
+  collect-prices:
+    # Scheduled writes are only ever intended for the default production branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.validate.outputs.changed }}
+      base_sha: ${{ steps.capture.outputs.sha }}
     steps:
-      - name: Check out default branch
+      - name: Check out without persisted credentials
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
+
+      - name: Record checkout SHA
+        id: capture
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -29,24 +42,170 @@ jobs:
           node-version: "22"
           cache: npm
 
+      # npm ci and all market requests run with a read-only repository token.
       - name: Install dependencies
         run: npm ci
 
       - name: Validate JavaScript
         run: node --check server/server.js
 
-      - name: Update Bangkok date market prices once
+      - name: Collect Bangkok daily market prices
         run: node server/server.js --save-once
 
-      - name: Commit new history to default branch
+      - name: Validate append-only price history
+        id: validate
         shell: bash
         run: |
-          if git diff --quiet -- server/price-history.json; then
-            echo "No changes to price-history.json"
-            exit 0
-          fi
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+
+          const path = 'server/price-history.json';
+          const original = JSON.parse(execFileSync('git', ['show', 'HEAD:' + path], { encoding: 'utf8' }));
+          const proposed = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (!Array.isArray(original) || !Array.isArray(proposed) || proposed.length < original.length) {
+            throw new Error('History must be an append-only JSON array');
+          }
+          for (let i = 0; i < original.length; i++) {
+            if (JSON.stringify(original[i]) !== JSON.stringify(proposed[i])) {
+              throw new Error('Existing history record was changed at index ' + i);
+            }
+          }
+          const changedFiles = execFileSync('git', ['diff', '--name-only'], { encoding: 'utf8' })
+            .trim().split(/\r?\n/).filter(Boolean);
+          if (changedFiles.some((name) => name !== path)) {
+            throw new Error('Unexpected tracked file changed');
+          }
+          const appended = proposed.slice(original.length);
+          if (appended.length > 20) throw new Error('Too many records appended in one daily run');
+          const dayInBangkok = (value) => new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(new Date(value));
+          const expectedDay = dayInBangkok(Date.now());
+          const allowedCrops = new Set([
+            'shallot', 'kale', 'pakchoi', 'chili', 'coriander',
+            'cucumber', 'longbean', 'celery', 'morningglory', 'cabbage',
+          ]);
+          const existingIds = new Set(original.map((row) => row.eventId).filter(Boolean));
+          for (const record of appended) {
+            if (record.schemaVersion !== 3 || record.recordType !== 'market_append' ||
+                !allowedCrops.has(record.crop) || typeof record.name !== 'string' ||
+                typeof record.eventId !== 'string' || !record.eventId ||
+                existingIds.has(record.eventId) ||
+                typeof record.timestamp !== 'string' || !Number.isFinite(Date.parse(record.timestamp)) ||
+                record.date !== expectedDay || dayInBangkok(record.timestamp) !== record.date ||
+                !Array.isArray(record.markets) || record.markets.length === 0) {
+              throw new Error('Invalid new history record or unexpected Bangkok date');
+            }
+            existingIds.add(record.eventId);
+          }
+          if (appended.length === 0 && changedFiles.length) {
+            throw new Error('History file changed without new records');
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'changed=' + String(appended.length > 0) + '\n');
+          console.log('Validated existing:', original.length, 'appended:', appended.length);
+          NODE
+
+      - name: Transfer validated history to isolated commit job
+        if: steps.validate.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-price-history
+          path: server/price-history.json
+          if-no-files-found: error
+          retention-days: 2
+
+  commit-history:
+    needs: collect-prices
+    if: github.ref == 'refs/heads/main' && needs.collect-prices.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out main without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Stop if main advanced during price collection
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.collect-prices.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || {
+            echo "::error::main advanced during collection; refusing a stale history push"
+            exit 1
+          }
+
+      - name: Download validated history
+        uses: actions/download-artifact@v4
+        with:
+          name: daily-price-history
+          path: ${{ runner.temp }}/farm-history
+
+      - name: Recheck artifact is append-only against current main
+        shell: bash
+        env:
+          HISTORY_PATH: ${{ runner.temp }}/farm-history/price-history.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          original = json.loads(Path('server/price-history.json').read_text(encoding='utf-8'))
+          proposed = json.loads(Path(os.environ['HISTORY_PATH']).read_text(encoding='utf-8'))
+          if not isinstance(original, list) or not isinstance(proposed, list):
+              raise SystemExit('History must be an array')
+          if len(proposed) <= len(original) or len(proposed) - len(original) > 20:
+              raise SystemExit('Unexpected history append length')
+          if proposed[:len(original)] != original:
+              raise SystemExit('Existing history changed; refusing commit')
+          expected_day = datetime.now(ZoneInfo('Asia/Bangkok')).date().isoformat()
+          allowed = {'shallot', 'kale', 'pakchoi', 'chili', 'coriander',
+                     'cucumber', 'longbean', 'celery', 'morningglory', 'cabbage'}
+          seen_ids = {row.get('eventId') for row in original if isinstance(row, dict)}
+          for row in proposed[len(original):]:
+              if not isinstance(row, dict) or row.get('schemaVersion') != 3 or row.get('recordType') != 'market_append':
+                  raise SystemExit('Invalid new history format')
+              if row.get('crop') not in allowed or row.get('date') != expected_day:
+                  raise SystemExit('Invalid crop or Bangkok date')
+              event_id = row.get('eventId')
+              if not isinstance(event_id, str) or not event_id or event_id in seen_ids:
+                  raise SystemExit('Duplicate or missing event ID')
+              seen_ids.add(event_id)
+              timestamp = row.get('timestamp')
+              try:
+                  observed_day = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).astimezone(
+                      ZoneInfo('Asia/Bangkok')).date().isoformat()
+              except (ValueError, TypeError, AttributeError) as exc:
+                  raise SystemExit('Invalid timestamp') from exc
+              if observed_day != expected_day or not isinstance(row.get('markets'), list) or not row['markets']:
+                  raise SystemExit('Invalid observed date or markets')
+          print('Validated protected history prefix:', len(original), 'new:', len(proposed) - len(original))
+          PY
+
+      - name: Commit only price-history.json
+        shell: bash
+        env:
+          HISTORY_PATH: ${{ runner.temp }}/farm-history/price-history.json
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp "$HISTORY_PATH" server/price-history.json
+          git add -- server/price-history.json
+          git diff --cached --check
+          test "$(git diff --cached --name-only)" = "server/price-history.json"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/price-history.json
           git commit -m "data: daily market prices $(TZ=Asia/Bangkok date +%F)"
-          git push
+          # Token is available only during this final step, never to npm ci.
+          git -c 'credential.helper=!f() { echo username=x-access-token; echo password="$GH_TOKEN"; }; f' \
+            push origin HEAD:refs/heads/main
