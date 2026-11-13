@@ -5,13 +5,6 @@ on:
     # 08:17 Thailand = 01:17 UTC (GitHub schedule may be delayed)
     - cron: "17 1 * * *"
   workflow_dispatch:
-  # Branch-only test. Production collection/commit jobs are gated to main.
-  push:
-    branches:
-      - test/actions-security-8154
-    paths:
-      - .github/workflows/daily-prices.yml
-
 # Least privilege by default. Only the isolated commit job gets write access.
 permissions:
   contents: read
@@ -22,8 +15,8 @@ concurrency:
 
 jobs:
   collect-prices:
-    # Scheduled writes are only ever intended for the default production branch.
-    if: github.ref == 'refs/heads/main'
+    # Collect only when the default branch is scheduled or dispatched intentionally.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -219,96 +212,3 @@ jobs:
           # Token is available only during this final step, never to npm ci.
           git -c 'credential.helper=!f() { echo username=x-access-token; echo password="$GH_TOKEN"; }; f' \
             push origin HEAD:refs/heads/main
-
-  runner-dry-run:
-    if: github.ref == 'refs/heads/test/actions-security-8154'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout main history read-only
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          persist-credentials: false
-
-      - name: Generate synthetic append-only history
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          from datetime import datetime, timezone
-
-          original = json.loads(Path('server/price-history.json').read_text(encoding='utf-8'))
-          if not isinstance(original, list) or len(original) < 784:
-              raise SystemExit('Expected at least 784 original history rows')
-          crops = ['shallot','kale','pakchoi','chili','coriander','cucumber',
-                   'longbean','celery','morningglory','cabbage']
-          # Clearly synthetic: no external market calls, no Git writes.
-          day = '2099-01-01'
-          appended = [{
-              'schemaVersion': 3, 'recordType': 'market_append',
-              'eventId': 'dry-run-8156-' + crop, 'crop': crop,
-              'name': 'DRY RUN ' + crop, 'date': day,
-              'timestamp': '2099-01-01T01:00:00.000Z',
-              'markets': [{'source':'dry-run', 'min': 1, 'max': 1}],
-          } for crop in crops]
-          candidate = original + appended
-          assert candidate[:len(original)] == original
-          assert len(candidate) == len(original) + 10
-          assert len({row['eventId'] for row in appended}) == 10
-          Path('dry-run-history.json').write_text(
-              json.dumps(candidate, ensure_ascii=False), encoding='utf-8')
-          Path('dry-run-result.json').write_text(
-              json.dumps({'base_count':len(original),'candidate_count':len(candidate),
-                          'appended':10,'source':'synthetic-only'}, indent=2),
-              encoding='utf-8')
-          print('PASS: original', len(original), 'synthetic candidate', len(candidate))
-          PY
-
-      - name: Upload dry-run artifact only
-        uses: actions/upload-artifact@v4
-        with:
-          name: farm-dry-run-8156
-          path: |
-            dry-run-history.json
-            dry-run-result.json
-          if-no-files-found: error
-          retention-days: 1
-
-  runner-verify-artifact:
-    needs: runner-dry-run
-    if: github.ref == 'refs/heads/test/actions-security-8154'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Download dry-run artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: farm-dry-run-8156
-
-      - name: Verify transferred artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          candidate = json.loads(Path('dry-run-history.json').read_text(encoding='utf-8'))
-          report = json.loads(Path('dry-run-result.json').read_text(encoding='utf-8'))
-          assert report['source'] == 'synthetic-only'
-          assert report['appended'] == 10
-          assert report['candidate_count'] == report['base_count'] + 10
-          assert len(candidate) == report['candidate_count']
-          assert [row['eventId'] for row in candidate[-10:]] == [
-              'dry-run-8156-' + crop for crop in
-              ['shallot','kale','pakchoi','chili','coriander','cucumber',
-               'longbean','celery','morningglory','cabbage']
-          ]
-          print('PASS: artifact handoff between read-only jobs')
-          PY
