@@ -7144,5 +7144,95 @@
     "maxPrice": 25,
     "sourceCount": 2,
     "timestamp": "2026-11-12T08:17:48.694Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 145,
+    "minPrice": 120,
+    "maxPrice": 170,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:15.601Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 48.75,
+    "minPrice": 40,
+    "maxPrice": 60,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:16.823Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 8.5,
+    "minPrice": 8,
+    "maxPrice": 10,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:17.087Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 41.25,
+    "minPrice": 35,
+    "maxPrice": 50,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:17.356Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 130,
+    "minPrice": 100,
+    "maxPrice": 170,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:17.622Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 31.75,
+    "minPrice": 30,
+    "maxPrice": 35,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:17.892Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 53.75,
+    "minPrice": 40,
+    "maxPrice": 60,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:18.159Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 112.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:18.431Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 58.75,
+    "minPrice": 35,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:18.705Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 17.75,
+    "minPrice": 13,
+    "maxPrice": 25,
+    "sourceCount": 2,
+    "timestamp": "2026-11-13T07:54:18.971Z"
   }
 ]
