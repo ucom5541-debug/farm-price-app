@@ -7234,5 +7234,95 @@
     "maxPrice": 25,
     "sourceCount": 2,
     "timestamp": "2026-11-13T07:54:18.971Z"
+  },
+  {
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "averagePrice": 137.5,
+    "minPrice": 120,
+    "maxPrice": 150,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:14.178Z"
+  },
+  {
+    "crop": "kale",
+    "name": "คะน้า",
+    "averagePrice": 58.5,
+    "minPrice": 56,
+    "maxPrice": 62,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:15.273Z"
+  },
+  {
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "averagePrice": 8,
+    "minPrice": 6,
+    "maxPrice": 10,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:15.527Z"
+  },
+  {
+    "crop": "chili",
+    "name": "พริก",
+    "averagePrice": 42,
+    "minPrice": 38,
+    "maxPrice": 50,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:15.777Z"
+  },
+  {
+    "crop": "coriander",
+    "name": "ผักชี",
+    "averagePrice": 137.5,
+    "minPrice": 120,
+    "maxPrice": 170,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:16.033Z"
+  },
+  {
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "averagePrice": 31.75,
+    "minPrice": 30,
+    "maxPrice": 35,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:16.285Z"
+  },
+  {
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "averagePrice": 58.75,
+    "minPrice": 50,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:16.535Z"
+  },
+  {
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "averagePrice": 112.5,
+    "minPrice": 100,
+    "maxPrice": 120,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:16.790Z"
+  },
+  {
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "averagePrice": 66,
+    "minPrice": 60,
+    "maxPrice": 70,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:17.039Z"
+  },
+  {
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "averagePrice": 17.25,
+    "minPrice": 16,
+    "maxPrice": 18,
+    "sourceCount": 2,
+    "timestamp": "2026-11-14T07:36:17.337Z"
   }
 ]
