@@ -2,6 +2,7 @@ import http from "http";
 import fs from "fs";
 import { Agent, fetch as undiciFetch } from "undici";
 import tls from "node:tls";
+import { randomUUID } from "node:crypto";
 
 const srimuangAgent = new Agent({
   connect: {
@@ -19,7 +20,7 @@ const srimuangAgent = new Agent({
 const PORT = Number(process.env.PORT || 3001);
 // Always use the history file next to this server.js, regardless of cwd.
 const HISTORY_FILE = new URL("./price-history.json", import.meta.url);
-let priceHistory = [];
+let priceHistory;
 
 // Do not quietly overwrite history if the JSON file is absent or damaged.
 if (!fs.existsSync(HISTORY_FILE)) {
@@ -37,44 +38,198 @@ try {
 }
 
 function bangkokDate(timestamp = Date.now()) {
-  const milliseconds = new Date(timestamp).getTime();
-  if (!Number.isFinite(milliseconds)) return null;
-  return new Date(milliseconds + 7 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  if (timestamp === null || typeof timestamp === "boolean") return null;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok",
+    year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+function readPriceHistory() {
+  const records = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+  if (!Array.isArray(records) || records.some((record) => !record || typeof record !== "object" ||
+      typeof record.crop !== "string" || typeof record.timestamp !== "string" ||
+      !Number.isFinite(Date.parse(record.timestamp)) ||
+      ![undefined, 1, 2, 3].includes(record.schemaVersion) ||
+      (record.schemaVersion === 3 && (!Array.isArray(record.markets) ||
+        record.date !== bangkokDate(record.timestamp))))) {
+    throw new Error("รูปแบบประวัติไม่ถูกต้อง หยุดเพื่อป้องกันข้อมูลสูญหาย");
+  }
+  return records;
+}
+
+function historyMarketKey(market) {
+  return typeof market?.market === "string" && market.market.trim() ? market.market : null;
+}
+
+function historyMarketCompatible(market, cropKey, existing = []) {
+  const crop = CROPS[cropKey];
+  if (!crop || market.unit !== "บาท/กก.") return false;
+  if (market.market === "ตลาดสี่มุมเมือง") {
+    if (market.productId !== crop.simummuangProductId || market.productName !== crop.simummuangProductName ||
+        market.selectedSize !== crop.simummuangSize || !isSimumuangKg(market.sourceUnit)) return false;
+  } else if (market.market === "ตลาดศรีเมือง ราชบุรี") {
+    // Missing identity remains unknown; a known different product is rejected.
+    if (market.productName && ![crop.name, crop.srimuangKeyword].includes(market.productName)) return false;
+  } else return false;
+  return !existing.some((saved) => saved.unit !== market.unit ||
+    (saved.selectedSize && market.selectedSize && saved.selectedSize !== market.selectedSize));
+}
+
+function persistedMarket(market) {
+  return {
+    market: market.market, productId: market.productId ?? null,
+    productName: market.productName ?? null, selectedSize: market.selectedSize ?? null,
+    unit: market.unit, sourceUnit: market.sourceUnit ?? null,
+    min: market.min, max: market.max, mid: market.mid,
+    sourceUpdatedAt: market.sourceUpdatedAt ?? null,
+    action_date: market.action_date ?? null, fetchedAt: market.fetchedAt ?? null,
+    quality: market.quality, freshness: market.freshness, status: market.status,
+    source: market.source ?? null,
+  };
+}
+
+function validatedHistoricalMarket(market, record) {
+  if (market?.quality?.status !== "valid" ||
+      !["current", "unknown_timestamp"].includes(market.freshness?.status)) return null;
+  // Evaluate historical eligibility at the observation time, never at today's time.
+  const checked = validateMarketPrice({ ...market, available: true,
+    validated: true, dataCompleteness: { complete: true } }, Date.parse(record.timestamp), { ...(record.pricePolicy ?? {
+      currentMaxAgeMs: 24 * 3600000, staleMaxAgeMs: 48 * 3600000, futureToleranceMs: 0 }),
+      allowUnknownTimestamp: true });
+  return checked.available && checked.historyEligible ? { ...checked,
+    freshness: { ...checked.freshness, evaluatedAt: record.timestamp, scope: "at_observation" } } : null;
+}
+
+function buildDailyHistory(records, cropKey = null) {
+  const groups = new Map();
+  records.forEach((record, index) => {
+    if (cropKey && record.crop !== cropKey) return;
+    const date = bangkokDate(record.timestamp);
+    if (!date) return;
+    const key = `${record.crop}:${date}`;
+    if (!groups.has(key)) groups.set(key, { date, records: [] });
+    groups.get(key).records.push({ record, index });
+  });
+  const result = [];
+  for (const group of groups.values()) {
+    const legacy = group.records.filter(({ record }) => !Array.isArray(record.markets));
+    if (legacy.length) {
+      // Unknown source provenance cannot safely be combined with market events.
+      const usableLegacy = legacy.filter(({ record }) => Number.isFinite(Number(record.averagePrice)) && Number(record.averagePrice) > 0);
+      if (!usableLegacy.length) continue;
+      const preferred = [...usableLegacy].sort((a, b) =>
+        Number(Number(b.record.minPrice) > 0) - Number(Number(a.record.minPrice) > 0) ||
+        Number(Number(b.record.sourceCount) >= 2) - Number(Number(a.record.sourceCount) >= 2) ||
+        Date.parse(b.record.timestamp) - Date.parse(a.record.timestamp))[0].record;
+      result.push(preferred);
+      continue;
+    }
+    const occupied = new Set();
+    const markets = [];
+    for (const { record } of group.records) {
+      for (const market of record.markets) {
+        const key = historyMarketKey(market);
+        if (!key || occupied.has(key)) continue;
+        // First observation wins even if invalid; never substitute a later price.
+        occupied.add(key);
+        const checked = validatedHistoricalMarket(market, record);
+        if (checked && !markets.some((saved) => saved.unit !== checked.unit ||
+            (saved.selectedSize && checked.selectedSize && saved.selectedSize !== checked.selectedSize))) {
+          markets.push(checked);
+        }
+      }
+    }
+    if (!markets.length) continue;
+    const first = group.records[0].record;
+    const last = group.records[group.records.length - 1].record;
+    result.push({ schemaVersion: 3, dailyView: true, freshnessScope: "at_observation", crop: first.crop, name: first.name,
+      date: group.date, timestamp: last.timestamp, firstObservedAt: first.timestamp,
+      averagePrice: average(markets.map((market) => market.mid)),
+      medianPrice: median(markets.map((market) => market.mid)),
+      minPrice: Math.min(...markets.map((market) => market.min)),
+      maxPrice: Math.max(...markets.map((market) => market.max)),
+      sourceCount: markets.length, unit: "บาท/กก.",
+      priceStatus: !markets.every((market) => market.verifiedCurrent) ? "unverified_freshness" :
+        markets.every((market) => market.productId && market.productName && market.selectedSize) ? "current" : "unverified_metadata",
+      metadataStatus: markets.every((market) => market.productId && market.productName && market.selectedSize) ? "complete" : "incomplete_source_identity",
+      markets: markets.map(persistedMarket), recordCount: group.records.length,
+      recordIndexes: group.records.map(({ index }) => index) });
+  }
+  return result.sort((a, b) => bangkokDate(a.timestamp).localeCompare(bangkokDate(b.timestamp)) ||
+    a.crop.localeCompare(b.crop));
+}
+
+function atomicWriteHistory(records) {
+  const text = JSON.stringify(records, null, 2);
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed) || parsed.length !== records.length) throw new Error("ประวัติ JSON ไม่สมบูรณ์");
+  const temporary = new URL(`./.price-history.${process.pid}.${randomUUID()}.tmp`, HISTORY_FILE);
+  let fd;
+  try {
+    fd = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(fd, text, "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    const verified = JSON.parse(fs.readFileSync(temporary, "utf8"));
+    if (JSON.stringify(verified) !== JSON.stringify(parsed)) throw new Error("ตรวจสอบไฟล์ชั่วคราวไม่ผ่าน");
+    fs.renameSync(temporary, HISTORY_FILE);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
 }
 
 function savePriceHistory(cropKey, data) {
-  if (!data || !Number.isFinite(data.averagePrice)) return false;
-
-  // Find any existing item for this crop and Bangkok calendar date.
-  const today = bangkokDate();
-  const existingIndex = priceHistory.findLastIndex(
-    (item) => item.crop === cropKey && bangkokDate(item.timestamp) === today
-  );
-  const updated = {
-    crop: cropKey,
-    name: data.name,
-    averagePrice: data.averagePrice,
-    minPrice: data.minPrice,
-    maxPrice: data.maxPrice,
-    sourceCount: data.sourceCount,
-    timestamp: new Date().toISOString(),
-  };
-
-  if (existingIndex >= 0) {
-    // Update today's snapshot in place; do not create another entry.
-    priceHistory[existingIndex] = { ...priceHistory[existingIndex], ...updated };
-  } else {
-    priceHistory.push(updated);
+  if (!data || data.historyEligible === false || !Array.isArray(data.markets)) return false;
+  const now = Date.now();
+  const valid = data.markets.map((market) => validateMarketPrice(market, now))
+    .filter((market) => market.available && market.historyEligible);
+  if (!valid.length || !Number.isFinite(data.averagePrice) ||
+      Math.abs(data.averagePrice - average(valid.map((market) => market.mid))) > 1e-9) return false;
+  const lock = new URL("./.price-history.json.lock", HISTORY_FILE);
+  let lockFd;
+  try {
+    // Cooperative local writers only: fail rather than remove another writer's lock.
+    try { lockFd = fs.openSync(lock, "wx", 0o600); }
+    catch (error) {
+      if (error.code === "EEXIST") throw new Error("history_busy: มีผู้เขียนประวัติอยู่แล้ว ห้ามลบ lock อัตโนมัติ", { cause: error });
+      throw error;
+    }
+    // Reload inside the lock so another process's completed append cannot be lost.
+    const diskHistory = readPriceHistory();
+    const today = bangkokDate(now);
+    const daily = diskHistory.filter((record) => record.crop === cropKey && bangkokDate(record.timestamp) === today);
+    if (daily.some((record) => !Array.isArray(record.markets))) {
+      console.warn(`legacy_history_requires_review: ${cropKey} ${today}`);
+      priceHistory = diskHistory;
+      return false;
+    }
+    const occupied = new Set(daily.flatMap((record) => record.markets).map(historyMarketKey));
+    const existing = daily.flatMap((record) => record.markets
+      .map((market) => validatedHistoricalMarket(market, record)).filter(Boolean));
+    const additions = [];
+    for (const market of valid) {
+      const key = historyMarketKey(market);
+      if (!key || occupied.has(key) || !historyMarketCompatible(market, cropKey, [...existing, ...additions])) continue;
+      occupied.add(key);
+      additions.push(market);
+    }
+    if (!additions.length) { priceHistory = diskHistory; return false; }
+    const event = { schemaVersion: 3, recordType: "market_append", eventId: randomUUID(),
+      crop: cropKey, name: data.name, date: today, timestamp: new Date(now).toISOString(),
+      pricePolicy: { ...PRICE_POLICY }, markets: additions.map(persistedMarket) };
+    const nextHistory = [...diskHistory, event];
+    atomicWriteHistory(nextHistory);
+    priceHistory = nextHistory;
+    return true;
+  } finally {
+    if (lockFd !== undefined) {
+      fs.closeSync(lockFd);
+      fs.unlinkSync(lock);
+    }
   }
-
-  // Preserve old history records and retain the existing 5000-item cap.
-  while (priceHistory.length > 5000) priceHistory.shift();
-
-  // A failed write must be reported to GitHub Actions (not a false success).
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(priceHistory, null, 2), "utf8");
-  return true;
 }
 // ==========================================
 // พืชที่เราติดตาม
@@ -83,6 +238,9 @@ function savePriceHistory(cropKey, data) {
 const CROPS = {
   shallot: {
     name: "หอมแบ่ง",
+    simummuangProductId: "698aaceeee6cbda61dfbd207",
+    simummuangProductName: "ต้นหอม",
+    simummuangSize: "large",
     srimuangKeyword: "ต้นหอม",
     talaadthaiKeyword: "ต้นหอม",
     talaadthaiUrl:
@@ -92,6 +250,9 @@ const CROPS = {
 
   kale: {
     name: "คะน้า",
+    simummuangProductId: "698aacecee6cbda61dfbd1c3",
+    simummuangProductName: "ต้นคะน้า",
+    simummuangSize: "large",
     srimuangKeyword: "คะน้าต้น",
     talaadthaiKeyword: "คะน้าต้น",
     talaadthaiUrl:
@@ -101,6 +262,9 @@ const CROPS = {
 
   pakchoi: {
     name: "กวางตุ้ง",
+    simummuangProductId: "698aacedee6cbda61dfbd1e5",
+    simummuangProductName: "กวางตุ้งใบ",
+    simummuangSize: "large",
     srimuangKeyword: "ผักกวางตุ้งธรรมดา",
     talaadthaiKeyword: "กวางตุ้งดอก",
     talaadthaiUrl:
@@ -110,6 +274,9 @@ const CROPS = {
 
   chili: {
     name: "พริก",
+    simummuangProductId: "698aacebee6cbda61dfbd16f",
+    simummuangProductName: "พริกจินดาแดง",
+    simummuangSize: "large",
     srimuangKeyword: "พริกจินดาแดง",
     talaadthaiKeyword: "พริกขี้หนูแดง",
     talaadthaiUrl:
@@ -123,6 +290,9 @@ const CROPS = {
 
     coriander: {
     name: "ผักชี",
+    simummuangProductId: "698aaceeee6cbda61dfbd20e",
+    simummuangProductName: "ผักชีไทย",
+    simummuangSize: "large",
     srimuangKeyword: "ผักชี",
     talaadthaiKeyword: "ผักชีไทย",
     talaadthaiUrl:
@@ -131,6 +301,9 @@ const CROPS = {
   },
     cucumber: {
     name: "แตงกวา",
+    simummuangProductId: "6989c1bd2f44a006e423550e",
+    simummuangProductName: "แตงกวา",
+    simummuangSize: "large",
     srimuangKeyword: "แตงกวา",
     talaadthaiKeyword: "แตงกวาอ่อน",
     talaadthaiUrl:
@@ -140,6 +313,9 @@ const CROPS = {
 
   longbean: {
     name: "ถั่วฝักยาว",
+    simummuangProductId: "6989c1be2f44a006e423552f",
+    simummuangProductName: "ถั่วฝักยาว เนื้อ",
+    simummuangSize: "large",
     srimuangKeyword: "ถั่วฝักยาว",
     talaadthaiKeyword: "ถั่วฝักยาว",
     talaadthaiUrl:
@@ -149,6 +325,9 @@ const CROPS = {
 
   celery: {
     name: "ขึ้นฉ่าย",
+    simummuangProductId: "698aaceeee6cbda61dfbd22a",
+    simummuangProductName: "ขึ้นฉ่าย/ตั้งโอ๋ ดิน",
+    simummuangSize: "large",
     srimuangKeyword: "ขึ้นฉ่าย",
     talaadthaiKeyword: "คึ่นช่าย",
     talaadthaiUrl:
@@ -163,6 +342,9 @@ const CROPS = {
 
   morningglory: {
     name: "ผักบุ้งจีน",
+    simummuangProductId: "698aacf1ee6cbda61dfbd2b8",
+    simummuangProductName: "ผักบุ้งจีน",
+    simummuangSize: "large",
     srimuangKeyword: "ผักบุ้งจีน",
     talaadthaiKeyword: "ผักบุ้งจีน",
     talaadthaiUrl:
@@ -172,13 +354,16 @@ const CROPS = {
 
   cabbage: {
     name: "กะหล่ำปลี",
+    simummuangProductId: "698aacefee6cbda61dfbd246",
+    simummuangProductName: "กะหล่ำปลีเขียว",
+    simummuangSize: "large",
     srimuangKeyword: "กะหล่ำปลี",
     talaadthaiKeyword: "กะหล่ำปลี",
     talaadthaiUrl:
       "https://talaadthai.com/products/cabbage-9725-2495",
     simummuangKeywords: ["กะหล่ำปลี"],
   },
-  
+
 };
 
 // ==========================================
@@ -188,9 +373,6 @@ const CROPS = {
 const SRIMUANG_URL =
   "https://www.taladsrimuang.com/site/product/report_all.php?id=1";
 
-const SIMUMUANG_API =
-  "https://api.simummuangmarket.com/api/app/products?page=1&limit=20&isShow=true&sortBy=sort_th&sortOrder=asc";
-
 // ==========================================
 // Utility
 // ==========================================
@@ -198,7 +380,7 @@ const SIMUMUANG_API =
 function round2(number) {
   return Math.round(number * 100) / 100;
 }
- 
+
 function midpoint(min, max) {
   return round2((Number(min) + Number(max)) / 2);
 }
@@ -344,7 +526,8 @@ console.error("SRIMUANG CAUSE:", error.cause);
     return {
       market: "ตลาดศรีเมือง ราชบุรี",
       available: false,
-      reason: error.message,
+      status: "load_failed",
+      reason: "ตลาดโหลดข้อมูลไม่สำเร็จ: " + error.message,
     };
   }
 }
@@ -361,6 +544,136 @@ console.error("SRIMUANG CAUSE:", error.cause);
 // ถ้าดึงไม่ได้ ระบบยังทำงานต่อ
 // ==========================================
 
+// Verified identity candidates from the read-only API audit on 2026-11-04.
+// Confirmed primaries and large size are configured in CROPS. Other entries remain
+// identity-checked alternatives for a future explicit product selector, never fallbacks.
+const SIMUMUANG_PRODUCTS = {
+  "หอมแบ่ง": [
+    {
+      "id": "698aaceeee6cbda61dfbd207",
+      "name": "ต้นหอม"
+    }
+  ],
+  "คะน้า": [
+    {
+      "id": "698aacecee6cbda61dfbd1c3",
+      "name": "ต้นคะน้า"
+    },
+    {
+      "id": "698aacecee6cbda61dfbd1ca",
+      "name": "ยอดคะน้า"
+    },
+    {
+      "id": "698aacedee6cbda61dfbd1d1",
+      "name": "คะน้าต้นอ้วน/คะน้าเห็ดหอม"
+    },
+    {
+      "id": "698ad7eb3d0ee904ee3d45cc",
+      "name": "คะน้าฮ่องกง"
+    }
+  ],
+  "กวางตุ้ง": [
+    {
+      "id": "698aacedee6cbda61dfbd1e5",
+      "name": "กวางตุ้งใบ"
+    },
+    {
+      "id": "698aacedee6cbda61dfbd1d7",
+      "name": "กวางตุ้งดอก"
+    },
+    {
+      "id": "698ad7f33d0ee904ee3d46d8",
+      "name": "กวางตุ้งจีน"
+    },
+    {
+      "id": "698aacedee6cbda61dfbd1de",
+      "name": "กวางตุ้งไต้หวัน"
+    }
+  ],
+  "พริก": [
+    {
+      "id": "698aacebee6cbda61dfbd16f",
+      "name": "พริกจินดาแดง"
+    },
+    {
+      "id": "698aacebee6cbda61dfbd168",
+      "name": "พริกจินดาเขียว"
+    },
+    {
+      "id": "698aaceaee6cbda61dfbd161",
+      "name": "พริกขี้หนูสวนม้ง(เชียงใหม่)"
+    },
+    {
+      "id": "698aacecee6cbda61dfbd1a2",
+      "name": "พริกสวนหอม"
+    }
+  ],
+  "ผักชี": [
+    {
+      "id": "698aaceeee6cbda61dfbd20e",
+      "name": "ผักชีไทย"
+    }
+  ],
+  "ขึ้นฉ่าย": [
+    {
+      "id": "698aaceeee6cbda61dfbd22a",
+      "name": "ขึ้นฉ่าย/ตั้งโอ๋ ดิน"
+    },
+    {
+      "id": "698aacefee6cbda61dfbd231",
+      "name": "ขึ้นฉ่าย/ตั้งโอ๋ ล้าง"
+    },
+    {
+      "id": "698ad7f33d0ee904ee3d46c5",
+      "name": "ขึ้นฉ่าย /ตั้งโอ๋ จีน"
+    }
+  ],
+  "ผักบุ้งจีน": [
+    {
+      "id": "698aacf1ee6cbda61dfbd2b8",
+      "name": "ผักบุ้งจีน"
+    }
+  ],
+  "แตงกวา": [
+    {
+      "id": "6989c1bd2f44a006e423550e",
+      "name": "แตงกวา"
+    }
+  ],
+  "ถั่วฝักยาว": [
+    {
+      "id": "6989c1be2f44a006e423552f",
+      "name": "ถั่วฝักยาว เนื้อ"
+    },
+    {
+      "id": "6989c1be2f44a006e4235536",
+      "name": "ถั่วฝักยาว เกษตร"
+    }
+  ],
+  "กะหล่ำปลี": [
+    {
+      "id": "698aacefee6cbda61dfbd246",
+      "name": "กะหล่ำปลีเขียว"
+    },
+    {
+      "id": "698aacefee6cbda61dfbd23f",
+      "name": "กะหล่ำปลี ขาว"
+    },
+    {
+      "id": "698ad7eb3d0ee904ee3d45c0",
+      "name": "กะหล่ำปลีหัวใจ"
+    },
+    {
+      "id": "698ad7eb3d0ee904ee3d45b9",
+      "name": "กะหล่ำปลี ม่วง"
+    },
+    {
+      "id": "698ad7ea3d0ee904ee3d45a6",
+      "name": "กะหล่ำปลี จีน"
+    }
+  ]
+};
+
 function getSimumuangName(item) {
   return (
     item?.th?.name ||
@@ -369,209 +682,328 @@ function getSimumuangName(item) {
   );
 }
 
-function getSimumuangRange(item) {
-  const groups = [
-    item?.price?.small,
-    item?.price?.medium,
-    item?.price?.large,
-  ].filter(Boolean);
-
-  const values = [];
-
-  for (const group of groups) {
-   if (
-  Number.isFinite(Number(group.min)) &&
-  Number(group.min) > 0
-) {
-  values.push(Number(group.min));
-}
-
-   if (
-  Number.isFinite(Number(group.max)) &&
-  Number(group.max) > 0
-) {
-  values.push(Number(group.max));
-}
-  }
-
-  if (!values.length) return null;
-
-  return {
-    min: Math.min(...values),
-    max: Math.max(...values),
+function inspectSimumuangPrices(item) {
+  const parse = (value) => {
+    if (typeof value !== "number" && typeof value !== "string") return null;
+    if (typeof value === "string" && value.trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
   };
+  return ["small", "medium", "large"].map((size) => {
+    const group = item?.price?.[size];
+    const raw = group ?? null;
+    const min = parse(group?.min);
+    const max = parse(group?.max);
+    let status;
+    if (group == null || (min === 0 && max === 0)) status = "missing_price";
+    else if (min === null || max === null) status = "invalid_value";
+    else if (min === 0 || max === 0) status = "incomplete_range";
+    else if (min > max) status = "invalid_range";
+    else status = "valid";
+    return { size, raw, status, min: status === "valid" ? min : null,
+      max: status === "valid" ? max : null };
+  });
 }
+
+function getSimumuangRange(item, size) {
+  const ranges = inspectSimumuangPrices(item).filter((range) => range.status === "valid");
+  // Never merge different sizes or silently choose between them.
+  return (size ? ranges.find((range) => range.size === size) :
+    ranges.length === 1 ? ranges[0] : null) || null;
+}
+
+function getSimumuangUnit(item) {
+  const unit = item?.prod_unit_id;
+  return { id: unit?._id ?? null, th: unit?.th?.name ?? null, en: unit?.en?.name ?? null };
+}
+
+function isSimumuangKg(unit) {
+  // Both labels must agree; do not use a piece price as a kilogram price.
+  return unit?.th === "กิโลกรัม" && unit?.en === "kg";
+}
+
+// Trial policy, configurable without changing API URLs or source timestamps.
+function policyNumber(name, fallback, allowZero = false) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!raw.trim()) throw new Error(`Invalid price policy: ${name}`);
+  const value = Number(raw);
+  if (!Number.isFinite(value) || (allowZero ? value < 0 : value <= 0)) {
+    throw new Error(`Invalid price policy: ${name}`);
+  }
+  return value;
+}
+function policyBoolean(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (raw !== "true" && raw !== "false") throw new Error(`Invalid price policy: ${name}`);
+  return raw === "true";
+}
+const PRICE_POLICY = Object.freeze({
+  currentMaxAgeMs: policyNumber("PRICE_CURRENT_MAX_HOURS", 24) * 60 * 60 * 1000,
+  staleMaxAgeMs: policyNumber("PRICE_STALE_MAX_HOURS", 48) * 60 * 60 * 1000,
+  futureToleranceMs: policyNumber("PRICE_FUTURE_TOLERANCE_SECONDS", 0, true) * 1000,
+  allowUnknownTimestamp: policyBoolean("PRICE_ALLOW_UNKNOWN_TIMESTAMP", true),
+});
+if (![PRICE_POLICY.currentMaxAgeMs, PRICE_POLICY.staleMaxAgeMs, PRICE_POLICY.futureToleranceMs].every(Number.isFinite) ||
+    PRICE_POLICY.staleMaxAgeMs < PRICE_POLICY.currentMaxAgeMs) {
+  throw new Error("PRICE_STALE_MAX_HOURS must not be less than PRICE_CURRENT_MAX_HOURS");
+}
+
+function inspectPriceFreshness(timestamp, now = Date.now(), policy = PRICE_POLICY) {
+  // Require an explicit timezone, not a host-local or coerced timestamp.
+  const match = typeof timestamp === "string" && timestamp.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+  );
+  const milliseconds = match ? Date.parse(timestamp) : NaN;
+  const validCalendar = match && Number(match[2]) >= 1 && Number(match[2]) <= 12 &&
+    Number(match[3]) >= 1 && Number(match[3]) <= new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate() &&
+    Number(match[4]) < 24 && Number(match[5]) < 60 && Number(match[6]) < 60;
+  if (!validCalendar || !Number.isFinite(milliseconds) || milliseconds > now + policy.futureToleranceMs) {
+    return { status: "invalid_timestamp", sourceUpdatedAt: timestamp ?? null,
+      ageMs: null, timezone: "Asia/Bangkok" };
+  }
+  const ageMs = Math.max(0, now - milliseconds);
+  const sameDay = bangkokDate(milliseconds) === bangkokDate(now);
+  const status = ageMs > policy.staleMaxAgeMs ? "expired" :
+    sameDay && ageMs <= policy.currentMaxAgeMs ? "current" : "stale";
+  return { status, sourceUpdatedAt: timestamp, ageMs, timezone: "Asia/Bangkok" };
+}
+
+function validateMarketPrice(market, now = Date.now(), policy = PRICE_POLICY) {
+  const base = { ...market, sourceUpdatedAt: market.sourceUpdatedAt ?? market.updatedAt ?? null,
+    fetchedAt: market.fetchedAt ?? null };
+  const reject = (status, reason) => ({ ...base, available: false, historyEligible: false,
+    verifiedCurrent: false, status, reason, quality: { status, reason } });
+  if (!market.available) return { ...base, historyEligible: false, verifiedCurrent: false,
+    quality: market.quality ?? { status: market.status ?? "unavailable", reason: market.reason ?? "ไม่มีข้อมูลราคา" } };
+  if (["invalid_range", "invalid_mid", "invalid_value", "unsupported_unit"].includes(market.status)) {
+    return reject(market.status, market.reason || "ข้อมูลราคาถูกปฏิเสธจากต้นทาง");
+  }
+  const values = [market.min, market.max, market.mid];
+  if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value > 0)) {
+    return reject("invalid_value", "ข้อมูลราคาต้องเป็นตัวเลขบวกที่ถูกต้อง");
+  }
+  if (market.min > market.max) return reject("invalid_range", "ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด");
+  if (market.mid < market.min || market.mid > market.max ||
+      Math.abs(market.mid - midpoint(market.min, market.max)) > 1e-9) {
+    return reject("invalid_mid", "ราคากลางไม่สอดคล้องกับช่วงราคา");
+  }
+  if (market.unit !== "บาท/กก.") return reject("unsupported_unit", "หน่วยสินค้าไม่ใช่บาทต่อกิโลกรัม");
+  const simummuang = market.market === "ตลาดสี่มุมเมือง";
+  if (market.dataCompleteness?.complete === false) return reject("incomplete_data", "ตลาดโหลดข้อมูลไม่สำเร็จหรือโหลดไม่ครบ");
+  if (simummuang && (!market.validated || !market.selectedSize ||
+      !isSimumuangKg(market.sourceUnit) || market.dataCompleteness?.complete !== true)) {
+    return reject("unverified_price", "ข้อมูลสินค้า ขนาด หน่วย หรือความครบถ้วนยังไม่ผ่านการตรวจสอบ");
+  }
+  const freshness = !simummuang && base.sourceUpdatedAt === null ?
+    { status: "unknown_timestamp", sourceUpdatedAt: null, ageMs: null, timezone: "Asia/Bangkok" } :
+    inspectPriceFreshness(base.sourceUpdatedAt, now, policy);
+  const quality = { status: "valid" };
+  const reason = { stale: "ราคาเก่า ไม่ใช้คำนวณราคาปัจจุบัน", expired: "ราคาหมดอายุ ไม่ใช้คำนวณ",
+    invalid_timestamp: "เวลาราคาต้นทางไม่ถูกต้องหรือไม่สามารถอ่านได้",
+    unknown_timestamp: "ไม่สามารถยืนยันเวลาราคา" }[freshness.status];
+  const eligible = freshness.status === "current" ||
+    (freshness.status === "unknown_timestamp" && policy.allowUnknownTimestamp);
+  return { ...base, quality, freshness, available: eligible, historyEligible: eligible,
+    verifiedCurrent: freshness.status === "current",
+    status: freshness.status === "current" ? "valid" : freshness.status,
+    ...(reason ? { reason } : {}) };
+}
+
 let simuMuangItemsCache = null;
 let simuMuangCacheTime = 0;
 const SIMUMUANG_CACHE_MS = 5 * 60 * 1000;
 let simuMuangLoadingPromise = null;
+let simuMuangFailure = null;
+const SIMUMUANG_RETRY_DELAY_MS = 30 * 1000;
+const SIMUMUANG_FAILURE_COOLDOWN_MS = 2 * 60 * 1000;
+
+async function loadSimumuangItems() {
+  // Each attempt owns its items. Integrity checks do not establish a provider snapshot.
+  const attempts = [];
+  let requestCount = 0;
+  let verifiedPageCount = null;
+  const diagnostics = () => ({ attempts, requestCount,
+    requestBudget: verifiedPageCount === null ? 2 : 2 * verifiedPageCount,
+    maxAttempts: 2, retryDelayMs: SIMUMUANG_RETRY_DELAY_MS,
+    snapshotConsistency: "not_confirmed" });
+  const fail = (issue, message, retryable = false) => Object.assign(new Error(message), { issue, retryable });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const allItems = [];
+    const seen = new Set();
+    const pages = [];
+    let expected = null;
+    let currentPage = 1;
+    const requestsBefore = requestCount;
+    try {
+      for (let page = 1; page <= (expected?.totalPages ?? 1); page++) {
+        currentPage = page;
+        if (requestCount >= (verifiedPageCount === null ? 2 : 2 * verifiedPageCount)) {
+          throw fail("request_budget", "ถึงขีดจำกัดคำขอสำหรับการโหลดสองรอบ");
+        }
+        if (page > 1) await new Promise((resolve) => setTimeout(resolve, 500));
+        const url = "https://api.simummuangmarket.com/api/app/products" +
+          `?page=${page}` + "&limit=20";
+        requestCount++;
+        let response;
+        try { response = await fetch(url, {
+          headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 Farm-Dashboard/1.0" },
+          signal: AbortSignal.timeout(30000),
+        }); } catch { throw fail("network", "การเชื่อมต่อเครือข่าย DNS หรือ TLS ล้มเหลว"); }
+        if (!response.ok) {
+          const status = Number.isSafeInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : "unknown";
+          throw fail("http_error", `HTTP ${status}: หยุดโหลดโดยไม่ลองซ้ำอัตโนมัติ`);
+        }
+        let body;
+        try { body = await response.json(); }
+        catch { throw fail("invalid_json", "ไม่สามารถอ่าน JSON จากตลาดได้"); }
+        const data = body?.data;
+        if (!Array.isArray(data?.data) || !Number.isSafeInteger(data.total) || data.total < 0 ||
+            !Number.isSafeInteger(data.totalPages) || data.totalPages < 1 || data.totalPages > 60 ||
+            data.currentPage !== page || data.perPage !== 20 ||
+            data.itemCount !== data.data.length ||
+            data.totalPages !== Math.max(1, Math.ceil(data.total / data.perPage))) {
+          throw fail("invalid_pagination", "โครงสร้างหรือ metadata ของ pagination ไม่ถูกต้อง", true);
+        }
+        verifiedPageCount ??= data.totalPages;
+        expected ??= { total: data.total, totalPages: data.totalPages };
+        if (data.total !== expected.total || data.totalPages !== expected.totalPages) {
+          throw fail("pagination_changed", "metadata ของ pagination เปลี่ยนระหว่างโหลด", true);
+        }
+        const expectedCount = page < expected.totalPages ? 20 : expected.total - (page - 1) * 20;
+        if (data.data.length !== expectedCount) throw fail("incomplete_page", "จำนวนสินค้าในหน้าไม่ครบ", true);
+        for (const item of data.data) {
+          if (typeof item?._id !== "string" || !item._id) throw fail("missing_product_id", "ข้อมูลไม่มีรหัสสินค้า", true);
+          if (seen.has(item._id)) throw fail("duplicate_product_id", "พบรหัสสินค้าซ้ำระหว่างโหลด", true);
+          seen.add(item._id);
+          allItems.push(item);
+        }
+        pages.push(page);
+      }
+      if (allItems.length !== expected.total) throw fail("incomplete_total", "จำนวนสินค้ารวมไม่ครบ", true);
+      attempts.push({ attempt, issue: "complete", requestCount: requestCount - requestsBefore,
+        loadedPages: pages, loadedCount: allItems.length });
+      console.log("SIMUMUANG_LOAD", JSON.stringify(diagnostics()));
+      return { items: allItems, dataCompleteness: { complete: true, ...expected,
+        loadedPages: pages, loadedCount: allItems.length, diagnostics: diagnostics() }, fetchedAt: new Date(Date.now()).toISOString() };
+    } catch (error) {
+      attempts.push({ attempt, failedPage: currentPage, issue: error.issue ?? "internal_error",
+        requestCount: requestCount - requestsBefore, loadedPages: pages, loadedCount: allItems.length });
+      // Never log upstream exception text, headers or response bodies.
+      console.warn("SIMUMUANG_LOAD", JSON.stringify(diagnostics()));
+      if (error.retryable && attempt === 1 && requestCount < diagnostics().requestBudget) {
+        await new Promise((resolve) => setTimeout(resolve, SIMUMUANG_RETRY_DELAY_MS));
+        continue;
+      }
+      const message = error.issue ? error.message : "เกิดข้อผิดพลาดระหว่างตรวจสอบข้อมูลตลาด";
+      const failure = new Error(`รอบ ${attempt} หน้า ${currentPage}: ${message}`);
+      failure.dataCompleteness = { complete: false, ...expected, loadedPages: pages,
+        failedPage: currentPage, loadedCount: allItems.length, reason: failure.message,
+        diagnostics: diagnostics() };
+      throw failure;
+    }
+  }
+}
 
 async function getSimumuangPrice(crop) {
   try {
-    if (
-  simuMuangItemsCache &&
-  Date.now() - simuMuangCacheTime < SIMUMUANG_CACHE_MS
-) {
-  const allItems = simuMuangItemsCache;
-
-  return getSimumuangPriceFromItems(crop, allItems);
-}
-if (simuMuangLoadingPromise) {
-  const allItems = await simuMuangLoadingPromise;
-
-  return getSimumuangPriceFromItems(crop, allItems);
-}
-simuMuangLoadingPromise = (async () => {
-    const allItems = [];
-    const MAX_PAGES = 60;
-
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const url =
-        "https://api.simummuangmarket.com/api/app/products" +
-        `?page=${page}` +
-        "&limit=20" ;
-
-      const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent":
-            "Mozilla/5.0 Farm-Dashboard/1.0",
-        },
-        signal: AbortSignal.timeout(30000),
-      });
-
-      if (!response.ok) {
-        console.log(
-          `SIMUMUANG PAGE ${page}: HTTP ${response.status}`
-        );
-
-        if (page === 1) {
-          throw new Error(
-            `API ตอบกลับ ${response.status}`
-          );
-        }
-
-        break;
+    let snapshot;
+    if (simuMuangItemsCache && Date.now() - simuMuangCacheTime < SIMUMUANG_CACHE_MS) {
+      snapshot = simuMuangItemsCache;
+    } else {
+      if (!simuMuangLoadingPromise) {
+        if (simuMuangFailure && Date.now() < simuMuangFailure.retryAt) throw simuMuangFailure.error;
+        const loading = loadSimumuangItems().then((loaded) => {
+          simuMuangItemsCache = loaded;
+          simuMuangCacheTime = Date.now();
+          simuMuangFailure = null;
+          return loaded;
+        });
+        simuMuangLoadingPromise = loading;
+        // Reset once per load, including rejection; concurrent readers share it.
+        loading.then(() => { if (simuMuangLoadingPromise === loading) simuMuangLoadingPromise = null; },
+          (error) => {
+            const failedAt = Date.now();
+            simuMuangFailure = { error, failedAt, retryAt: failedAt + SIMUMUANG_FAILURE_COOLDOWN_MS };
+            if (simuMuangLoadingPromise === loading) simuMuangLoadingPromise = null;
+          });
       }
-
-      const json = await response.json();
-
-      const pageItems =
-        json?.data?.data || [];
-
-      console.log(
-        `SIMUMUANG PAGE ${page}:`,
-        pageItems.length,
-        "รายการ"
-      );
-
-      if (pageItems.length === 0) {
-        break;
-      }
-
-      allItems.push(...pageItems);
+      snapshot = await simuMuangLoadingPromise;
     }
-
-    console.log(
-      "SIMUMUANG TOTAL ITEMS:",
-      allItems.length
-    );
-    simuMuangItemsCache = allItems;
-simuMuangCacheTime = Date.now();
-return allItems;
-})();
-
-const loadedItems = await simuMuangLoadingPromise;
-simuMuangLoadingPromise = null;
-return getSimumuangPriceFromItems(crop, loadedItems);
-
-} catch (error) {
-  simuMuangLoadingPromise = null;
-
-  return {
-    market: "ตลาดสี่มุมเมือง",
-    available: false,
-    reason: error.message,
-  };
+    return validateMarketPrice({ ...getSimumuangPriceFromItems(crop, snapshot.items),
+      fetchedAt: snapshot.fetchedAt, dataCompleteness: snapshot.dataCompleteness });
+  } catch (error) {
+    const failure = error === simuMuangFailure?.error ? simuMuangFailure : null;
+    return { market: "ตลาดสี่มุมเมือง", available: false, status: "incomplete_data",
+      reason: "ตลาดโหลดข้อมูลไม่สำเร็จ: " + error.message,
+      productId: crop.simummuangProductId ?? null, productName: crop.simummuangProductName ?? null,
+      selectedSize: crop.simummuangSize ?? null, fetchedAt: new Date(failure?.failedAt ?? Date.now()).toISOString(),
+      dataCompleteness: error.dataCompleteness ?? { complete: false },
+      ...(failure && Date.now() < failure.retryAt ? {
+        cooldown: { active: true, retryAt: new Date(failure.retryAt).toISOString(),
+          retryAfterMs: failure.retryAt - Date.now() } } : {}) };
+  }
 }
-} 
 
 function getSimumuangPriceFromItems(crop, allItems) {
-  const fallbackKeywords = {
-    "หอมแบ่ง": ["ต้นหอม", "หอมแบ่ง", "หอม"],
-    "คะน้า": ["คะน้า"],
-    "กวางตุ้ง": ["กวางตุ้ง"],
-    "พริก": ["พริก"],
-    "ผักชี": ["ผักชี"],
-    "แตงกวา": ["แตงกวา"],
-    "ถั่วฝักยาว": ["ถั่วฝักยาว"],
-    "ขึ้นฉ่าย": ["ขึ้นฉ่าย", "คื่นช่าย"],
-    "ผักบุ้งจีน": ["ผักบุ้ง", "ผักบุ้งจีน"],
-    "กะหล่ำปลี": ["กะหล่ำ", "กะหล่ำปลี"],
-  };
-
-  const searchKeywords = [
-    ...(crop.simumuangKeywords || []),
-    ...(fallbackKeywords[crop.name] || []),
-  ];
-
-  const found = allItems.find((item) => {
-    const name = getSimumuangName(item);
-
-    if (crop.name === "ผักชี") {
-  return name.includes("ผักชีไทย");
-}
-
-if (crop.name === "แตงกวา") {
-  return name.includes("แตงกวา") &&
-         !name.includes("ญี่ปุ่น");
-}
-
-    return searchKeywords.some(
-      (keyword) => name.includes(keyword)
-    );
+  const proposals = SIMUMUANG_PRODUCTS[crop.name] || [];
+  const candidates = allItems.flatMap((item) => {
+    const identity = proposals.find((proposal) => proposal.id === item?._id &&
+      proposal.name === getSimumuangName(item));
+    if (!identity) return [];
+    const unit = getSimumuangUnit(item);
+    const sizes = inspectSimumuangPrices(item);
+    return [{ productId: identity.id, productName: identity.name, unit, sizes,
+      isShow: item.isShow ?? null, isActive: item.isActive ?? null,
+      updatedAt: item.price?.updatedAt ?? null, action_date: item.price?.action_date ?? null,
+      productUpdatedAt: item.updatedAt ?? null,
+      reasons: [...(!isSimumuangKg(unit) ? ["unsupported_unit"] : []),
+        ...sizes.filter((range) => range.status !== "valid")
+          .map((range) => `${range.size}:${range.status}`)] }];
   });
-
-  console.log(
-  "SIMUMUANG MATCH:",
-  crop.name,
-  "=>",
-  found ? getSimumuangName(found) : "NOT FOUND"
-);
-
-console.log(
-  "SIMUMUANG RAW PRICE:",
-  found?.price
-);
-
-  if (!found) {
-    return {
-      market: "ตลาดสี่มุมเมือง",
-      available: false,
-      reason: "วันนี้ API ไม่พบสินค้ารายการนี้",
-    };
+  const selected = candidates.find((item) => item.productId === crop.simummuangProductId);
+  const configuredName = crop.simummuangProductName ??
+    proposals.find((item) => item.id === crop.simummuangProductId)?.name ?? null;
+  const base = { market: "ตลาดสี่มุมเมือง", available: false, candidates, proposals,
+    productId: crop.simummuangProductId ?? null, productName: configuredName,
+    selectedSize: crop.simummuangSize ?? null,
+    sourceUpdatedAt: selected?.updatedAt ?? null, action_date: selected?.action_date ?? null,
+    freshness: selected ? inspectPriceFreshness(selected.updatedAt) : null,
+    isShow: selected?.isShow ?? null, sourceUnit: selected?.unit ?? null };
+  const reject = (status, reason, extra = {}) => ({ ...base, status, reason, ...extra });
+  const observedPrimary = allItems.find((item) => item?._id === crop.simummuangProductId);
+  if (observedPrimary && getSimumuangName(observedPrimary) !== configuredName) {
+    return reject("product_identity_mismatch", "ชื่อสินค้าหลักไม่ตรงกับรหัสที่ยืนยัน ต้องตรวจสอบข้อมูล");
   }
-
-  const price = getSimumuangRange(found);
-
-  if (!price) {
-    return {
-      market: "ตลาดสี่มุมเมือง",
-      available: false,
-      reason: "ไม่มีข้อมูลราคา",
-    };
+  if (new Set(candidates.map((item) => item.productId)).size !== candidates.length) {
+    return reject("duplicate_product", "รหัสสินค้าซ้ำ ต้องตรวจสอบข้อมูล");
   }
-
-  return {
-    market: "ตลาดสี่มุมเมือง",
-    available: true,
-    productName: getSimumuangName(found),
-    min: price.min,
-    max: price.max,
-    mid: midpoint(price.min, price.max),
-    unit: "บาท/กก.",
-    source: "https://www.simummuangmarket.com/pricing",
-  };
+  if (!selected) return reject(crop.simummuangProductId ? "selected_product_not_found" :
+    candidates.length ? "selection_required" : "product_not_found",
+    crop.simummuangProductId ? "ไม่พบรหัสสินค้าหลักที่ยืนยันไว้ ห้ามใช้สินค้าอื่นแทน" :
+    candidates.length ? "รอยืนยันรหัสสินค้าหลัก" : "ไม่พบรหัสและชื่อสินค้าที่ตรวจสอบแล้ว");
+  if (!isSimumuangKg(selected.unit)) return reject("unsupported_unit", "หน่วยสินค้าไม่ใช่กิโลกรัม");
+  const validSizes = selected.sizes.filter((range) => range.status === "valid");
+  const range = crop.simummuangSize ? validSizes.find((entry) => entry.size === crop.simummuangSize) :
+    validSizes.length === 1 ? validSizes[0] : null;
+  if (!range) {
+    if (crop.simummuangSize) {
+      const inspected = selected.sizes.find((entry) => entry.size === crop.simummuangSize);
+      const status = inspected?.status ?? "invalid_value";
+      const messages = { invalid_range: "ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด",
+        incomplete_range: "ช่วงราคาไม่ครบ มีราคาศูนย์ด้านเดียว", missing_price: "ไม่มีราคา",
+        invalid_value: "ข้อมูลราคาไม่ถูกต้อง" };
+      return reject("selected_size_unavailable", "ขนาดที่เลือกใช้ไม่ได้: " + (messages[status] ?? "ไม่มีช่วงราคาที่ผ่านการตรวจสอบ"),
+        { selectedSizeStatus: status, quality: { status, size: crop.simummuangSize } });
+    }
+    return reject(validSizes.length > 1 ? "size_selection_required" : "no_valid_price",
+      validSizes.length ? "ต้องยืนยันขนาดสินค้า" : "ไม่มีช่วงราคาที่ผ่านการตรวจสอบ");
+  }
+  return { ...base, ...selected, available: true, status: "valid", validated: true,
+    selectedSize: range.size, size: range.size, min: range.min, max: range.max,
+    mid: midpoint(range.min, range.max), unit: "บาท/กก.", sourceUnit: selected.unit,
+    source: "https://www.simummuangmarket.com/pricing" };
 }
 // ==========================================
 // รวมหลายตลาด + ราคากลาง
@@ -584,9 +1016,21 @@ async function getCropMarketData(
 
   if (!crop) return null;
 
+  const collect = async (load, market) => {
+    try {
+      const result = await load(crop);
+      return validateMarketPrice({ ...result,
+        productName: result.productName ?? null,
+        fetchedAt: result.fetchedAt ?? new Date(Date.now()).toISOString() });
+    } catch {
+      return { market, available: false, historyEligible: false, status: "load_failed",
+        reason: "ตลาดโหลดข้อมูลไม่สำเร็จ", fetchedAt: new Date(Date.now()).toISOString(),
+        quality: { status: "load_failed" } };
+    }
+  };
   const markets = await Promise.all([
-    getSrimuangPrice(crop),
-    getSimumuangPrice(crop),
+    collect(getSrimuangPrice, "ตลาดศรีเมือง ราชบุรี"),
+    collect(getSimumuangPrice, "ตลาดสี่มุมเมือง"),
   ]);
 
   console.log(
@@ -631,6 +1075,10 @@ async function getCropMarketData(
 
     sourceCount:
       usableMarkets.length,
+    historyEligible: usableMarkets.some((market) => market.historyEligible),
+    priceStatus: !usableMarkets.length ? "no_usable_price" :
+      usableMarkets.every((market) => market.verifiedCurrent) ? "current" : "unverified_freshness",
+    fetchedAt: new Date(Date.now()).toISOString(),
 
     // ราคากลางแบบค่าเฉลี่ย
     averagePrice: average(midPrices),
@@ -777,12 +1225,14 @@ const server = http.createServer(
 if (url.pathname === "/api/history") {
   const cropKey = url.searchParams.get("crop");
 
-  let history = priceHistory;
-
-  if (cropKey) {
-    history = priceHistory.filter(
-      (item) => item.crop === cropKey
-    );
+  let history;
+  try {
+    const records = readPriceHistory();
+    history = buildDailyHistory(records, cropKey);
+    priceHistory = records;
+  } catch {
+    res.writeHead(500);
+    return res.end(JSON.stringify({ status: "error", message: "อ่านประวัติราคาไม่สำเร็จ กรุณาตรวจสอบไฟล์ต้นฉบับ" }));
   }
 
   res.writeHead(200);
@@ -852,6 +1302,8 @@ if (url.pathname === "/api/save-daily-prices") {
 
               sourceCount:
                 crop.sourceCount,
+              priceStatus: crop.priceStatus,
+              fetchedAt: crop.fetchedAt,
             })
           );
 
@@ -903,15 +1355,23 @@ async function saveDailyPrices() {
   console.log("เริ่มบันทึกราคา (เวลาไทย):", bangkokDate());
   let saved = 0;
   let skipped = 0;
+  let eligible = 0;
+  let unchanged = 0;
+  let failed = 0;
 
   for (const cropKey of Object.keys(CROPS)) {
     try {
       const data = await getCropMarketData(cropKey);
       // Save with at least one verified market; sourceCount records reliability.
-      if (data && data.sourceCount >= 1 && Number.isFinite(data.averagePrice)) {
+      if (data && data.historyEligible !== false && data.sourceCount >= 1 && Number.isFinite(data.averagePrice)) {
+        eligible += 1;
         if (savePriceHistory(cropKey, data)) {
           saved += 1;
           console.log(`บันทึก ${data.name}: ${data.averagePrice} บาท/กก. (${data.sourceCount} ตลาด)`);
+        } else {
+          skipped += 1;
+          unchanged += 1;
+          console.warn(`ข้ามข้อมูลซ้ำหรือไม่ผ่านเกณฑ์: ${cropKey}`);
         }
       } else {
         skipped += 1;
@@ -919,11 +1379,16 @@ async function saveDailyPrices() {
       }
     } catch (error) {
       skipped += 1;
+      failed += 1;
       console.error(`บันทึก ${cropKey} ไม่สำเร็จ:`, error);
     }
   }
   console.log(`เสร็จแล้ว: บันทึก ${saved} รายการ, ข้าม ${skipped} รายการ`);
-  return { saved, skipped };
+  return { saved, skipped, eligible, unchanged, failed };
+}
+
+function saveOnceExitCode(result) {
+  return result.failed > 0 || (result.saved === 0 && result.eligible === 0) ? 1 : 0;
 }
 
 // GitHub Actions runs this command once per day and commits the resulting file.
@@ -931,10 +1396,9 @@ async function saveDailyPrices() {
 if (process.argv.includes("--save-once")) {
   try {
     const result = await saveDailyPrices();
-    if (result.saved === 0) {
-      console.error("ไม่มีราคาที่บันทึกได้เลย: ยกเลิกงานเพื่อให้ GitHub Actions แจ้งความล้มเหลว");
-      process.exitCode = 1;
-    }
+    process.exitCode = saveOnceExitCode(result);
+    if (process.exitCode) console.error("ไม่มีราคาที่ผ่านเกณฑ์ หรือเขียนประวัติล้มเหลว");
+    else if (result.saved === 0) console.log("ไม่มีตลาดใหม่ที่ต้องเพิ่ม: ประวัติไม่เปลี่ยน ไม่ต้อง Commit ซ้ำ");
   } catch (error) {
     console.error("บันทึกรายวันล้มเหลว:", error);
     process.exitCode = 1;

@@ -1,0 +1,863 @@
+{
+  "observedAt": "2026-11-04",
+  "products": [
+    {
+      "_id": "698aacedee6cbda61dfbd1e5",
+      "th": {
+        "name": "กวางตุ้งใบ"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 22,
+          "max": 20
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.970Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aaceeee6cbda61dfbd20e",
+      "th": {
+        "name": "ผักชีไทย"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 120,
+          "max": 150
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.168Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aaceeee6cbda61dfbd207",
+      "th": {
+        "name": "ต้นหอม"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 140,
+          "max": 140
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.138Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacecee6cbda61dfbd1c3",
+      "th": {
+        "name": "ต้นคะน้า"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 40,
+          "max": 40
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.800Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacebee6cbda61dfbd16f",
+      "th": {
+        "name": "พริกจินดาแดง"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 40,
+          "max": 40
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.283Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": true,
+      "isActive": true
+    },
+    {
+      "_id": "698aacf1ee6cbda61dfbd2b8",
+      "th": {
+        "name": "ผักบุ้งจีน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 20,
+          "max": 16
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.919Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aaceeee6cbda61dfbd22a",
+      "th": {
+        "name": "ขึ้นฉ่าย/ตั้งโอ๋ ดิน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 110,
+          "max": 110
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.306Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacefee6cbda61dfbd231",
+      "th": {
+        "name": "ขึ้นฉ่าย/ตั้งโอ๋ ล้าง"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 90,
+          "max": 90
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.325Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacecee6cbda61dfbd1ca",
+      "th": {
+        "name": "ยอดคะน้า"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 44,
+          "max": 40
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.833Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacedee6cbda61dfbd1d7",
+      "th": {
+        "name": "กวางตุ้งดอก"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 24,
+          "max": 26
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.905Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "6989c1be2f44a006e423552f",
+      "th": {
+        "name": "ถั่วฝักยาว เนื้อ"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 38,
+          "max": 36
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:44.250Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "6989c1be2f44a006e4235536",
+      "th": {
+        "name": "ถั่วฝักยาว เกษตร"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 32,
+          "max": 30
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:44.303Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "6989c1bd2f44a006e423550e",
+      "th": {
+        "name": "แตงกวา"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 30,
+          "max": 28
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:43.952Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacefee6cbda61dfbd246",
+      "th": {
+        "name": "กะหล่ำปลีเขียว"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 14,
+          "max": 12
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.458Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacecee6cbda61dfbd1a2",
+      "th": {
+        "name": "พริกสวนหอม"
+      },
+      "price": {
+        "small": {
+          "min": 90,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 140,
+          "max": 150
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.596Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacebee6cbda61dfbd168",
+      "th": {
+        "name": "พริกจินดาเขียว"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 45,
+          "max": 50
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.232Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacedee6cbda61dfbd1d1",
+      "th": {
+        "name": "คะน้าต้นอ้วน/คะน้าเห็ดหอม"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 38,
+          "max": 38
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.869Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aaceaee6cbda61dfbd161",
+      "th": {
+        "name": "พริกขี้หนูสวนม้ง(เชียงใหม่)"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 60,
+          "max": 70
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.188Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7eb3d0ee904ee3d45cc",
+      "th": {
+        "name": "คะน้าฮ่องกง"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 80,
+          "max": 86
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:55:59.704Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacefee6cbda61dfbd23f",
+      "th": {
+        "name": "กะหล่ำปลี ขาว"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 20,
+          "max": 25
+        },
+        "action_date": "2026-11-03T17:36:17.338Z",
+        "updatedAt": "2026-11-03T17:31:46.425Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7f33d0ee904ee3d46d8",
+      "th": {
+        "name": "กวางตุ้งจีน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 60,
+          "max": 71
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:56:00.762Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7f33d0ee904ee3d46c5",
+      "th": {
+        "name": "ขึ้นฉ่าย /ตั้งโอ๋ จีน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 80,
+          "max": 100
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:56:00.671Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7eb3d0ee904ee3d45c0",
+      "th": {
+        "name": "กะหล่ำปลีหัวใจ"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 8,
+          "max": 12
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:55:59.653Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7eb3d0ee904ee3d45b9",
+      "th": {
+        "name": "กะหล่ำปลี ม่วง"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 30,
+          "max": 36
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:55:59.629Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698ad7ea3d0ee904ee3d45a6",
+      "th": {
+        "name": "กะหล่ำปลี จีน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 50,
+          "max": 56
+        },
+        "action_date": "2026-11-03T22:56:22.550Z",
+        "updatedAt": "2026-11-03T22:55:59.555Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    },
+    {
+      "_id": "698aacedee6cbda61dfbd1de",
+      "th": {
+        "name": "กวางตุ้งไต้หวัน"
+      },
+      "price": {
+        "small": {
+          "min": 0,
+          "max": 0
+        },
+        "medium": {
+          "min": 0,
+          "max": 0
+        },
+        "large": {
+          "min": 24,
+          "max": 24
+        },
+        "action_date": "2026-11-03T17:36:17.337Z",
+        "updatedAt": "2026-11-03T17:31:45.935Z"
+      },
+      "prod_unit_id": {
+        "_id": "684a8680856dd00ce1efe36e",
+        "th": {
+          "name": "กิโลกรัม"
+        },
+        "en": {
+          "name": "kg"
+        }
+      },
+      "isShow": false,
+      "isActive": true
+    }
+  ]
+}

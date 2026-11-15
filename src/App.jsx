@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import './App.css'
 
@@ -11,6 +11,60 @@ const API_BASE_URL = (
 ).replace(/\/+$/, '')
 
 const API_URL = `${API_BASE_URL}/api/simumuang`
+
+function formatMarketTime(value) {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return 'ไม่ทราบเวลา'
+  return new Date(value).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })
+}
+
+// Only expose allowlisted connection diagnostics, never raw URLs, headers or tokens.
+function safeConnectionDetails(value) {
+  if (typeof value !== 'string') return []
+  const details = []
+  const status = value.match(/(?:HTTP\s*|ตอบกลับ\s*)([45]\d{2})\b/i)
+  if (status) details.push(`สถานะ HTTP: ${status[1]}`)
+  const code = value.match(/\b(EAI_AGAIN|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT)\b/)
+  if (code) details.push(`รหัสการเชื่อมต่อ: ${code[1]}`)
+  for (const raw of value.match(/https?:\/\/[^\s<>"']+/gi) || []) {
+    try {
+      const parsed = new URL(raw)
+      // Market hosts are known public destinations. Do not expose arbitrary host data.
+      if (['www.taladsrimuang.com', 'taladsrimuang.com', 'api.simummuangmarket.com'].includes(parsed.hostname)) {
+        details.push(`ปลายทาง: ${parsed.hostname}`)
+      }
+    } catch { /* An invalid URL must not expose its original text. */ }
+  }
+  return [...new Set(details)]
+}
+
+function marketIssueMessage(market) {
+  const qualityMessages = {
+    invalid_range: 'ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด',
+    incomplete_range: 'ช่วงราคาไม่ครบ มีราคาศูนย์ด้านเดียว',
+    missing_price: 'ไม่มีราคา', invalid_value: 'ข้อมูลราคาไม่ถูกต้อง',
+  }
+  if (market.status === 'selected_size_unavailable') {
+    return `ขนาดที่เลือกใช้ไม่ได้: ${qualityMessages[market.selectedSizeStatus || market.quality?.status] || 'ไม่มีช่วงราคาที่ผ่านการตรวจสอบ'}`
+  }
+  const messages = {
+    ...qualityMessages,
+    load_failed: 'ตลาดโหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
+    incomplete_data: 'ตลาดโหลดข้อมูลไม่สำเร็จหรือข้อมูลไม่ครบ กรุณาลองใหม่ภายหลัง',
+    stale: 'ราคาเก่า ไม่ใช้คำนวณราคาปัจจุบัน', expired: 'ราคาหมดอายุ ไม่ใช้คำนวณ',
+    invalid_timestamp: 'เวลาราคาต้นทางไม่ถูกต้องหรือไม่สามารถอ่านได้',
+    unknown_timestamp: 'ไม่สามารถยืนยันเวลาราคา',
+    selection_required: 'รอยืนยันรหัสสินค้าหลัก', selected_product_not_found: 'ไม่พบสินค้าหลักที่ยืนยันไว้ ต้องตรวจสอบข้อมูล',
+    product_identity_mismatch: 'ชื่อสินค้าหลักไม่ตรงกับรหัสที่ยืนยัน ต้องตรวจสอบข้อมูล',
+    unsupported_unit: 'หน่วยสินค้าไม่ใช่กิโลกรัม', invalid_mid: 'ราคากลางไม่สอดคล้องกับช่วงราคา',
+    product_not_found: 'ไม่พบสินค้าที่ต้องการ', duplicate_product: 'พบรหัสสินค้าซ้ำ ต้องตรวจสอบข้อมูล',
+    size_selection_required: 'ต้องยืนยันขนาดสินค้า', no_valid_price: 'ไม่มีช่วงราคาที่ผ่านการตรวจสอบ',
+    unverified_price: 'ข้อมูลสินค้ายังไม่ผ่านการตรวจสอบ',
+  }
+  if (messages[market.status]) return messages[market.status]
+  // Older APIs sometimes omit status. Preserve known Thai reasons only.
+  if (['ขนาดที่เลือกใช้ไม่ได้', 'รอยืนยันรหัสสินค้าหลัก', 'ตลาดโหลดข้อมูลไม่สำเร็จ', 'ไม่พบสินค้า'].includes(market.reason)) return market.reason
+  return 'ยังไม่มีราคาที่ผ่านการตรวจสอบจากตลาดนี้'
+}
 
 const CROPS = {
   shallot: {
@@ -150,41 +204,103 @@ function isPreferredHistory(candidate, existing) {
   return false
 }
 
+function buildDailyHistoryMap(history, selectedCrop) {
+  const latestByDay = new Map()
+  history.forEach((item) => {
+    const price = Number(item?.averagePrice)
+    const dayKey = bangkokDayKey(item?.timestamp)
+    if (!dayKey || !Number.isFinite(price) || price <= 0) return
+    if (selectedCrop && item?.crop !== selectedCrop) return
+    const candidate = { ...item, averagePrice: price, dayKey }
+    const key = selectedCrop ? dayKey : `${item.crop}:${dayKey}`
+    const previous = latestByDay.get(key)
+    if (!previous || isPreferredHistory(candidate, previous)) latestByDay.set(key, candidate)
+  })
+  return latestByDay
+}
+
+const EMPTY_HISTORY = []
+const INITIAL_MARKET_RESOURCE = { data: null, serverStatus: 'กำลังเชื่อมต่อ...' }
+
+// An effect owns each request. Rendering derives pending/error visibility from its key.
+function useRequestResource(key, load, initialValue) {
+  const [result, setResult] = useState(() => ({ key: null, value: initialValue, error: '' }))
+  const owner = useRef(null)
+
+  useEffect(() => {
+    if (key === null) return
+    const controller = new AbortController()
+    const request = { active: true, controller }
+    owner.current = request
+    const isCurrent = () => request.active && !controller.signal.aborted && owner.current === request
+
+    async function execute() {
+      try {
+        const value = await load(key, controller.signal)
+        if (!isCurrent()) return
+        setResult(previous => isCurrent() ? { key, value, error: '' } : previous)
+      } catch (err) {
+        if (!isCurrent() || err?.name === 'AbortError') return
+        console.error('โหลดข้อมูลไม่สำเร็จ', safeConnectionDetails(err?.message))
+        setResult(previous => isCurrent()
+          ? { ...previous, key, error: err.message || 'โหลดข้อมูลไม่สำเร็จ' }
+          : previous)
+      }
+    }
+    void execute()
+    return () => {
+      request.active = false
+      controller.abort()
+      if (owner.current === request) owner.current = null
+    }
+  }, [key, load])
+
+  const current = result.key === key
+  return { value: result.value, current, loading: key !== null && !current,
+    error: current ? result.error : '' }
+}
+
+async function fetchMarketResource(_key, signal) {
+  const response = await fetch(API_URL, { signal })
+  if (!response.ok) throw new Error(`Server ตอบกลับ ${response.status}`)
+  const data = await response.json()
+  const received = data?.data?.data || []
+  const usable = received.filter((item) => item.sourceCount > 0 && Number.isFinite(item.averagePrice))
+  const serverStatus = !usable.length
+    ? 'รับข้อมูลแล้ว แต่ยังไม่มีราคาที่ผ่านเกณฑ์'
+    : usable.every((item) => item.priceStatus === 'current')
+      ? 'รับข้อมูลแล้ว มีราคาปัจจุบันที่ผ่านการตรวจสอบ'
+      : 'รับข้อมูลแล้ว มีราคาเปรียบเทียบที่ยังยืนยันเวลาราคาไม่ได้'
+  return { data, serverStatus }
+}
+
+async function fetchHistoryResource(key, signal) {
+  const response = await fetch(`${API_BASE_URL}/api/history?crop=${encodeURIComponent(key.cropKey)}`, { signal })
+  if (!response.ok) throw new Error(`History Server ${response.status}`)
+  const result = await response.json()
+  if (!Array.isArray(result.data)) throw new Error('ข้อมูลประวัติไม่ถูกต้อง')
+  // Keep daily views from either one or two markets, including legacy history.
+  return result.data
+}
+
 function App() {
   const [page, setPage] = useState('home')
-  const [selectedCrop, setSelectedCrop] = useState(null)
-
-  const [serverStatus, setServerStatus] =
-    useState('กำลังเชื่อมต่อ...')
-
-  const [simumuangData, setSimumuangData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const [history, setHistory] = useState([])
-  const [historyError, setHistoryError] = useState('')
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyKey, setHistoryKey] = useState(null)
+  const selectedCrop = historyKey?.cropKey ?? null
+  const [marketVersion, setMarketVersion] = useState(0)
+  const marketRequest = useRequestResource(marketVersion, fetchMarketResource, INITIAL_MARKET_RESOURCE)
+  const historyRequest = useRequestResource(historyKey, fetchHistoryResource, EMPTY_HISTORY)
+  const simumuangData = marketRequest.value.data
+  const serverStatus = marketRequest.error ? 'เชื่อมต่อ Server ไม่สำเร็จ' : marketRequest.value.serverStatus
+  const loading = marketRequest.loading
+  const error = marketRequest.error
+  const history = historyRequest.current && !historyRequest.error ? historyRequest.value : EMPTY_HISTORY
+  const historyError = historyRequest.error
+  const historyLoading = historyRequest.loading
   const [chartDays, setChartDays] = useState(7)
 
-  // ไม่เปลี่ยนไฟล์ประวัติจริง: เลือกราคาหนึ่งรายการต่อหนึ่งวันเพื่อแสดงผลเท่านั้น
-  const dailyHistory = useMemo(() => {
-    const latestByDay = new Map()
-
-    history.forEach((item) => {
-      const price = Number(item?.averagePrice)
-      const dayKey = bangkokDayKey(item?.timestamp)
-      if (!dayKey || !Number.isFinite(price) || price <= 0) return
-      if (selectedCrop && item?.crop !== selectedCrop) return
-
-      const candidate = { ...item, averagePrice: price, dayKey }
-      const oldItem = latestByDay.get(dayKey)
-      if (!oldItem || isPreferredHistory(candidate, oldItem)) {
-        latestByDay.set(dayKey, candidate)
-      }
-    })
-
-    return latestByDay
-  }, [history, selectedCrop])
+  // API returns the append-only daily view; retain legacy deduplication as a safeguard.
+  const dailyHistory = useMemo(() => buildDailyHistoryMap(history, selectedCrop), [history, selectedCrop])
 
   // สร้างวันที่ครบตามช่วง 7/30/90 วัน โดยใช้ null เมื่อไม่มีราคาจริง
   const chartData = useMemo(() => {
@@ -224,64 +340,9 @@ function App() {
     .slice(-4)
     .reverse()
 
-  async function loadPriceHistory(cropKey) {
-    setHistoryLoading(true)
-    setHistoryError('')
-    setHistory([])
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/history?crop=${encodeURIComponent(cropKey)}`
-      )
-      if (!response.ok) throw new Error(`History Server ${response.status}`)
-
-      const result = await response.json()
-      if (!Array.isArray(result.data)) throw new Error('ข้อมูลประวัติไม่ถูกต้อง')
-      // ไม่กรอง sourceCount === 2 เพราะบางวันมีราคาจากเพียงตลาดเดียว
-      setHistory(result.data)
-    } catch (err) {
-      console.error('โหลดราคาย้อนหลังไม่สำเร็จ:', err)
-      setHistoryError(err.message || 'โหลดราคาย้อนหลังไม่สำเร็จ')
-    } finally {
-      setHistoryLoading(false)
-    }
+  function loadMarketData() {
+    setMarketVersion(version => version + 1)
   }
-  async function loadMarketData() {
-    try {
-      setLoading(true)
-      setError('')
-
-      const response = await fetch(API_URL)
-
-      if (!response.ok) {
-        throw new Error(`Server ตอบกลับ ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("DASHBOARD API DATA:", data)
-
-      setSimumuangData(data)
-      setServerStatus('เชื่อมต่อสำเร็จ')
-    } catch (err) {
-      console.error(err)
-
-      setServerStatus('เชื่อมต่อ Server ไม่สำเร็จ')
-      setError(err.message || 'ดึงข้อมูลไม่สำเร็จ')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadMarketData()
-  }, [])
-
-useEffect(() => {
-  if (selectedCrop) {
-    loadPriceHistory(selectedCrop)
-  } else {
-    setHistory([])
-  }
-}, [selectedCrop])
 
   const simumuangItems = useMemo(() => {
     return simumuangData?.data?.data || []
@@ -302,7 +363,9 @@ useEffect(() => {
   }
 
   function openCrop(cropKey) {
-    setSelectedCrop(cropKey)
+    setHistoryKey(previous => previous?.cropKey === cropKey ? previous : {
+      cropKey, version: (previous?.version ?? 0) + 1,
+    })
     setPage('crop')
   }
 
@@ -328,7 +391,7 @@ useEffect(() => {
           </button>
 
           <div className="menu-card">
-            <h3>🏪 ตลาดสี่มุมเมือง</h3>
+            <h3>🏪 สถานะระบบราคาตลาด</h3>
 
             <p>
               สถานะ:{' '}
@@ -340,7 +403,13 @@ useEffect(() => {
             {error && (
               <>
                 <h2>ดึงข้อมูลไม่สำเร็จ</h2>
-                <p>{error}</p>
+                <p className="market-error-message">ไม่สามารถโหลดข้อมูลราคาได้ กรุณาลองใหม่ภายหลัง</p>
+                {safeConnectionDetails(error).length > 0 && (
+                  <details className="market-error-details">
+                    <summary>รายละเอียดการเชื่อมต่อที่ปลอดภัย</summary>
+                    {safeConnectionDetails(error).map((detail) => <p key={detail}>{detail}</p>)}
+                  </details>
+                )}
               </>
             )}
 
@@ -363,6 +432,9 @@ useEffect(() => {
               >
                 <h3>{getThaiName(item)}</h3>                
 <p>ราคากลางหลายตลาด</p>
+<p>{item.priceStatus === 'current' ? 'ราคาปัจจุบันที่ผ่านการตรวจสอบ'
+  : item.priceStatus === 'unverified_freshness' ? 'ราคาเปรียบเทียบ — ไม่สามารถยืนยันเวลาราคาครบทุกตลาด'
+  : 'ยังไม่มีราคาที่ใช้คำนวณได้'}</p>
 
 <h2>
   {item.averagePrice ?? getPrice(item)}
@@ -374,18 +446,75 @@ useEffect(() => {
   ใช้ข้อมูล {item.sourceCount ?? 0} ตลาด
 </p>
 <div className="market-list">
-  {Array.isArray(item.markets) &&
-    item.markets
-      .filter((market) => market.available)
-      .map((market, index) => (
-        <p key={`${market.market}-${index}`}>
-          {market.market}:{" "}
-          {market.min === market.max
-            ? market.min
-            : `${market.min} - ${market.max}`}{" "}
-          บาท/กก.
+  {Array.isArray(item.markets) && item.markets.map((market, marketIndex) => {
+    const sizeLabels = { small: 'เล็ก', medium: 'กลาง', large: 'ใหญ่' }
+    const statusLabels = {
+      invalid_range: 'ช่วงราคาผิดปกติ: ราคาต่ำสุดสูงกว่าราคาสูงสุด',
+      incomplete_range: 'ช่วงราคาไม่ครบ',
+      missing_price: 'ไม่มีราคา',
+      invalid_value: 'ข้อมูลราคาไม่ถูกต้อง',
+    }
+    return (
+      <div key={`${market.market}-${marketIndex}`}>
+        <p>
+          {market.market}:{' '}
+          {!market.available && market.productName && (
+            <>{market.productName} {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize}${market.selectedSize === 'large' ? ' (large)' : ''}`} — </>
+          )}
+          {market.available ? (
+            <>
+              {market.productName && `${market.productName} `}
+              {market.selectedSize && `ขนาด${sizeLabels[market.selectedSize] || market.selectedSize}${market.selectedSize === 'large' ? ' (large)' : ''} `}
+              {market.min === market.max ? market.min : `${market.min} - ${market.max}`} บาท/กก.
+            </>
+          ) : marketIssueMessage(market)}
         </p>
-      ))}
+        {!market.available && safeConnectionDetails(market.reason).length > 0 && (
+          <details className="market-error-details">
+            <summary>รายละเอียดการเชื่อมต่อที่ปลอดภัย</summary>
+            {safeConnectionDetails(market.reason).map((detail) => <p key={detail}>{detail}</p>)}
+          </details>
+        )}
+        {!market.available && market.freshness && (
+          <p>สถานะเวลาราคา: {{ current: 'อยู่ในเกณฑ์ปัจจุบัน (ช่วงราคาอาจยังใช้ไม่ได้)',
+            stale: 'ราคาเก่า', expired: 'ราคาหมดอายุ', invalid_timestamp: 'เวลาราคาไม่ถูกต้อง',
+            unknown_timestamp: 'ไม่สามารถยืนยันเวลาราคา' }[market.freshness.status] || 'ไม่ทราบสถานะ'}</p>
+        )}
+        {market.available && (
+          <p>{market.verifiedCurrent ? 'ราคาปัจจุบันที่ผ่านการตรวจสอบ' : 'ไม่สามารถยืนยันเวลาราคา — ใช้เพื่อเปรียบเทียบ'}</p>
+        )}
+        {market.freshness?.status === 'stale' && market.quality?.status === 'valid' && (
+          <p>ราคาเก่า: {market.min} - {market.max} {market.unit} (ไม่ใช้คำนวณราคาปัจจุบัน)</p>
+        )}
+        <p>เวลาราคาต้นทาง: {formatMarketTime(market.sourceUpdatedAt)}
+          {' · '}เวลาดึงข้อมูล: {formatMarketTime(market.fetchedAt)}</p>
+        {market.action_date && <p>เวลาที่ต้นทางระบุเพิ่มเติม: {formatMarketTime(market.action_date)}</p>}
+        {market.candidates?.length > 0 && (
+          <details>
+            <summary>ตรวจสอบสินค้าและขนาด</summary>
+            {market.candidates.map((candidate) => (
+              <div key={candidate.productId}>
+                <p>{candidate.productName} — หน่วย: {candidate.unit?.th || 'ไม่ทราบหน่วย'}
+                  {candidate.reasons?.includes('unsupported_unit') && ' (ใช้คำนวณบาท/กก. ไม่ได้)'}
+                </p>
+                {candidate.sizes.map((range) => (
+                  <p key={range.size}>
+                    ขนาด{sizeLabels[range.size] || range.size}: {' '}
+                    {range.status === 'valid'
+                      ? `${range.min} - ${range.max} บาท/${candidate.unit?.th || 'ไม่ทราบหน่วย'}`
+                      : (statusLabels[range.status] || 'ข้อมูลราคาไม่ถูกต้อง')}
+                    {range.status !== 'valid' && range.raw != null && (
+                      <span> (ค่าต้นทาง min/max: {String(range.raw.min ?? 'ไม่ระบุ')} / {String(range.raw.max ?? 'ไม่ระบุ')})</span>
+                    )}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </details>
+        )}
+      </div>
+    )
+  })}
 </div>
               </div>
             ))}
@@ -418,6 +547,10 @@ useEffect(() => {
                     <br />
                     <small>
                       {formatDayFull(item.dayKey)} — {item.sourceCount ?? '?'} ตลาด
+                      {' · '}{item.priceStatus === 'current' ? 'ผ่านการตรวจสอบ ณ เวลาบันทึก'
+                        : item.priceStatus === 'unverified_freshness' ? 'มีราคาที่ไม่ยืนยันเวลาต้นทาง'
+                        : item.priceStatus === 'unverified_metadata' ? 'ข้อมูลชนิดหรือขนาดยังไม่ครบ ใช้เปรียบเทียบ'
+                        : 'ข้อมูลเดิม ไม่ทราบสถานะเวลาราคา'}
                     </small>
                   </div>
                 ))}
@@ -426,6 +559,7 @@ useEffect(() => {
           </div>
           <div className="menu-card">
             <h3>📈 กราฟราคา</h3>
+            <p>แสดงหนึ่งจุดต่อพืชต่อวันจากตลาดที่บันทึกได้ ประวัติบางรายการอาจไม่ยืนยันเวลาราคาต้นทาง</p>
             <p className="highest-price">
               ราคาสูงสุด {highestPrice ?? '-'} บาท/กก.
             </p>
@@ -509,7 +643,7 @@ useEffect(() => {
         <header className="header">
           <h1>💰 ราคาพืชผัก</h1>
           <p>
-            ข้อมูลล่าสุดจากตลาดสี่มุมเมือง
+            เปรียบเทียบราคาจากตลาดสี่มุมเมืองและตลาดศรีเมือง ราชบุรี
           </p>
         </header>
 
