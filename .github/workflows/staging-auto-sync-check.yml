@@ -1,0 +1,44 @@
+name: Staging Auto Sync Safety Check
+
+on:
+  push:
+    branches:
+      - test/auto-sync-staging-20261122
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farm-staging-auto-sync-check
+  cancel-in-progress: false
+
+jobs:
+  safe-staging-preflight:
+    if: github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_RENDER_SERVICE_ID: srv-dc1dtf2fngtc73fd19bg
+    steps:
+      - name: Checkout staging branch only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify branch and reserved production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/test/auto-sync-staging-20261122"
+          test "$STAGING_RENDER_SERVICE_ID" = "srv-dc1dtf2fngtc73fd19bg"
+          test "$STAGING_RENDER_SERVICE_ID" != "srv-dajd485g1s2s73a9r850"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate backend syntax
+        run: node --check server/server.js
+      - name: Run read-only history regression tests
+        run: node server/staging-auto-sync-check.mjs
+      - name: Confirm dry-run only
+        run: echo "Staging safety check complete; no deployment API was called."
