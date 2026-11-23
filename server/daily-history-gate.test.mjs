@@ -25,3 +25,18 @@ reject('reject more than 20 new records',[...old,...fresh,...Array.from({length:
 reject('reject no-op history',old);
 test('reject yesterday when expecting today',()=>assert.throws(()=>validateDailyAppend(old,expected,'2026-12-31')));
 test('valid partial daily batch',()=>assert.equal(validateDailyAppend(old,[...old,fresh[0]],day).appended,1));
+
+test('future daily batch is accepted without a fixed replay date',()=>{
+  const futureDate='2026-12-02';
+  const tomorrow=fresh.map((row,i)=>({...row,date:futureDate,timestamp:'2026-12-02T01:17:00.000Z',eventId:'future-staging-'+i}));
+  const result=validateDailyAppend(actual,[...actual,...tomorrow],futureDate);
+  assert.equal(result.appended,10);
+  assert.equal(result.date,futureDate);
+});
+test('future batch with mismatched Bangkok day is rejected',()=>{
+  const future={...fresh[0],date:'2026-12-02',timestamp:'2026-12-01T01:17:00.000Z',eventId:'future-mismatch'};
+  assert.throws(()=>validateDailyAppend(actual,[...actual,future],'2026-12-02'));
+});
+test('future day should not deploy when no data is added',()=>{
+  assert.throws(()=>validateDailyAppend(actual,actual,'2026-12-02'));
+});
