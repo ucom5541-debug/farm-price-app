@@ -10,35 +10,123 @@ permissions:
   contents: read
 
 concurrency:
-  group: farm-staging-auto-sync-check
+  group: farm-staging-auto-sync-gate
   cancel-in-progress: false
 
 jobs:
   safe-staging-preflight:
-    if: github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: read
     env:
       STAGING_RENDER_SERVICE_ID: srv-dc1dtf2fngtc73fd19bg
     steps:
-      - name: Checkout staging branch only
+      - name: Checkout source branch without persisted credentials
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify branch and reserved production target
+      - name: Verify staging branch and prevent production targets
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ucom5541-debug/farm-price-app"
           test "$GITHUB_REF" = "refs/heads/test/auto-sync-staging-20261122"
           test "$STAGING_RENDER_SERVICE_ID" = "srv-dc1dtf2fngtc73fd19bg"
           test "$STAGING_RENDER_SERVICE_ID" != "srv-dajd485g1s2s73a9r850"
-      - name: Set up Node.js
+          test "$STAGING_RENDER_SERVICE_ID" != "srv-dbguk5d9fdbs73d44ung"
+      - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
       - name: Validate backend syntax
         run: node --check server/server.js
-      - name: Run read-only history regression tests
+      - name: Run history safety regression
         run: node server/staging-auto-sync-check.mjs
-      - name: Confirm dry-run only
-        run: echo "Staging safety check complete; no deployment API was called."
+      - name: Run market selector tests
+        run: node --test server/simumuang.test.js
+      - name: Report guarded preflight completion
+        run: echo "Read-only staging CI passed; no production target is configured."
+
+  promote-to-staging-only:
+    needs: safe-staging-preflight
+    if: >-
+      github.repository == 'ucom5541-debug/farm-price-app' &&
+      github.ref == 'refs/heads/test/auto-sync-staging-20261122' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[stage-promote]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      DEPLOY_BRANCH: test/auto-sync-release-20261122
+      STAGING_RENDER_SERVICE_ID: srv-dc1dtf2fngtc73fd19bg
+    steps:
+      - name: Checkout tested source commit without saved credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify staging target and allowlisted changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ucom5541-debug/farm-price-app"
+          test "$GITHUB_REF" = "refs/heads/test/auto-sync-staging-20261122"
+          test "$DEPLOY_BRANCH" = "test/auto-sync-release-20261122"
+          test "$STAGING_RENDER_SERVICE_ID" = "srv-dc1dtf2fngtc73fd19bg"
+          test "$DEPLOY_BRANCH" != "main"
+          git fetch origin "refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+          git merge-base --is-ancestor "origin/$DEPLOY_BRANCH" HEAD
+          changed="$(git diff --name-only "origin/$DEPLOY_BRANCH" HEAD)"
+          test -n "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              server/price-history.json|server/staging-sync-marker.json) ;;
+              *) echo "::error::Forbidden deploy change: $path"; exit 1 ;;
+            esac
+          done <<< "$changed"
+      - name: Revalidate append-only against deployed branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          const baseline = JSON.parse(execFileSync('git', ['show', 'origin/test/auto-sync-release-20261122:server/price-history.json'], {encoding:'utf8'}));
+          const proposal = JSON.parse(fs.readFileSync('server/price-history.json','utf8'));
+          assert.ok(Array.isArray(baseline) && Array.isArray(proposal));
+          assert.ok(proposal.length >= baseline.length && proposal.length - baseline.length <= 20);
+          for (let i=0;i<baseline.length;i++) assert.deepEqual(proposal[i], baseline[i], 'Existing price history was modified');
+          const ids=new Set(baseline.map(x=>x.eventId).filter(Boolean));
+          const crops=new Set(['shallot','kale','pakchoi','chili','coriander','cucumber','longbean','celery','morningglory','cabbage']);
+          const day=value=>{
+            const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value));
+            const m=Object.fromEntries(parts.map(v=>[v.type,v.value]));return m.year+'-'+m.month+'-'+m.day;
+          };
+          const expected=day(Date.now());
+          for(const row of proposal.slice(baseline.length)){
+            assert.equal(row.recordType,'market_append');
+            assert.equal(row.schemaVersion,3);
+            assert.ok(crops.has(row.crop));
+            assert.equal(row.date,expected);
+            assert.equal(day(row.timestamp),expected);
+            assert.ok(typeof row.eventId==='string' && row.eventId && !ids.has(row.eventId));
+            ids.add(row.eventId);
+            assert.ok(Array.isArray(row.markets) && row.markets.length>0);
+          }
+          console.log('Safe staging promotion: preserved',baseline.length,'records; added',proposal.length-baseline.length);
+          NODE
+      - name: Fast-forward only the staging release branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_BRANCH" = "test/auto-sync-release-20261122"
+          test "$DEPLOY_BRANCH" != "main"
+          git -c 'credential.helper=!f() { echo username=x-access-token; echo password="$GH_TOKEN"; }; f' \
+            push origin "HEAD:refs/heads/$DEPLOY_BRANCH"
