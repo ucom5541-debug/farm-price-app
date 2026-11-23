@@ -1,0 +1,9 @@
+{
+  "test": "ci-gated-render-staging-autodeploy",
+  "scope": "staging-only",
+  "productionDeployment": false,
+  "sourceBranch": "test/auto-sync-staging-20261122",
+  "targetBranch": "test/auto-sync-release-20261122",
+  "expectedHistoryRecords": 884,
+  "issuedOn": "2026-11-23"
+}
