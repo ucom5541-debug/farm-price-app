@@ -15,7 +15,7 @@ test('real historical daily batch is append-only',()=>{
 const reject=(name,proposal,date=day)=>test(name,()=>assert.throws(()=>validateDailyAppend(old,proposal,date)));
 reject('reject changed previous record',[{...old[0],crop:'unknown'},...old.slice(1),...fresh]);
 reject('reject deleted previous record',[...old.slice(0,-1),...fresh]);
-reject('reject duplicate event id',[...old,...fresh.slice(0,9),{...fresh[9],eventId:old[0].eventId}]);
+reject('reject duplicate event id',[...old,...fresh.slice(0,9),{...fresh[9],eventId:old.find(x=>typeof x.eventId==='string' && x.eventId).eventId}]);
 reject('reject duplicate crop',[...old,...fresh.slice(0,9),{...fresh[9],crop:fresh[0].crop}]);
 reject('reject invalid observation day',[...old,...fresh.slice(0,9),{...fresh[9],date:'2000-01-01'}]);
 reject('reject invalid timestamp',[...old,...fresh.slice(0,9),{...fresh[9],timestamp:'not-a-date'}]);
