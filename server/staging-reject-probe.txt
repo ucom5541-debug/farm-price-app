@@ -1,2 +1,0 @@
-STAGING NEGATIVE TEST: this path is intentionally not allowlisted for promotion.
-No application code or price record is modified.
