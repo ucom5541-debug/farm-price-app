@@ -1,0 +1,66 @@
+name: Staging API Read-Only Smoke Test
+
+on:
+  push:
+    branches:
+      - test/auto-sync-staging-20261122
+    paths:
+      - .github/workflows/staging-api-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-staging-history:
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_API: https://farm-price-auto-release-staging.onrender.com
+    steps:
+      - name: Verify Staging URL is not Production
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$STAGING_API" = "https://farm-price-auto-release-staging.onrender.com"
+          test "$STAGING_API" != "https://farm-price-app.onrender.com"
+      - name: Read-only production-isolated history endpoint verification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, time, urllib.request, urllib.error
+          from urllib.parse import quote
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          base='https://farm-price-auto-release-staging.onrender.com'
+          crops=('shallot','kale','pakchoi','chili','coriander','cucumber','longbean','celery','morningglory','cabbage')
+          def bangkok_date(record):
+              if record.get('date'):
+                  return record['date']
+              return datetime.fromisoformat(record['timestamp'].replace('Z','+00:00')).astimezone(ZoneInfo('Asia/Bangkok')).date().isoformat()
+          def get(crop):
+              url=base+'/api/history?crop='+quote(crop)
+              error=None
+              for attempt in range(8):
+                  try:
+                      with urllib.request.urlopen(url, timeout=25) as response:
+                          if response.status!=200: raise RuntimeError('HTTP '+str(response.status))
+                          return json.load(response)
+                  except (urllib.error.URLError, TimeoutError, ValueError, RuntimeError) as exc:
+                      error=exc
+                      time.sleep(8)
+              raise RuntimeError('Staging API failed for '+crop+': '+str(error))
+          for crop in crops:
+              result=get(crop)
+              assert result.get('status')=='ok', (crop,result.get('status'))
+              rows=result.get('data')
+              assert isinstance(rows,list) and result.get('count')==len(rows), (crop,'invalid count')
+              assert rows and bangkok_date(rows[-1])=='2026-11-22', (crop,'missing 2026-11-22',rows[-1] if rows else None)
+              assert all(bangkok_date(row)<=bangkok_date(rows[i+1]) for i,row in enumerate(rows[:-1])), (crop,'unsorted history')
+              if crop=='shallot':
+                  assert result['count']==65, ('shallot count',result['count'])
+              print('STAGING API OK',crop,'daily_count',len(rows),'last_day',bangkok_date(rows[-1]))
+          print('SUCCESS: all ten staging-only history endpoints verified; no writes were performed')
+          PY
