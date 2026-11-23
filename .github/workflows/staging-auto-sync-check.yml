@@ -46,6 +46,8 @@ jobs:
         run: node --check server/server.js
       - name: Run history safety regression
         run: node server/staging-auto-sync-check.mjs
+      - name: Run future daily history gate tests
+        run: node --test server/daily-history-gate.test.mjs
       - name: Run market selector tests
         run: node --test server/simumuang.test.js
       - name: Report guarded preflight completion
