@@ -16,9 +16,14 @@ export function validateDailyAppend(baseline, candidate, expectedDate, {maxAppen
   for (let i=0;i<baseline.length;i++) assert.deepEqual(candidate[i],baseline[i],`Old record changed at ${i}`);
   const seen = new Set();
   for (const row of baseline) {
-    assert.ok(row && typeof row === 'object' && typeof row.eventId === 'string' && row.eventId, 'Invalid baseline eventId');
-    assert.ok(!seen.has(row.eventId), 'Duplicate baseline eventId');
-    seen.add(row.eventId);
+    assert.ok(row && typeof row === 'object', 'Malformed baseline record');
+    // Legacy records predate eventId. Their unchanged bytes are protected above.
+    if (row.schemaVersion === 3) assert.ok(typeof row.eventId === 'string' && row.eventId, 'Invalid v3 baseline eventId');
+    if (row.eventId !== undefined && row.eventId !== null) {
+      assert.ok(typeof row.eventId === 'string' && row.eventId, 'Invalid baseline eventId');
+      assert.ok(!seen.has(row.eventId), 'Duplicate baseline eventId');
+      seen.add(row.eventId);
+    }
   }
   const newCrops = new Set();
   for(const row of candidate.slice(baseline.length)){
