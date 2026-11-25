@@ -13438,5 +13438,715 @@
         "source": "https://www.simummuangmarket.com/pricing"
       }
     ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "b6cc5674-80ac-42f3-bd82-25d3a8f8eec1",
+    "crop": "shallot",
+    "name": "หอมแบ่ง",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:37.802Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 90,
+        "max": 100,
+        "mid": 95,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:48:28.947Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aaceeee6cbda61dfbd207",
+        "productName": "ต้นหอม",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 100,
+        "max": 110,
+        "mid": 105,
+        "sourceUpdatedAt": "2026-11-24T23:14:01.642Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:01.642Z",
+          "ageMs": 38136160,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "5583a1a6-859b-4bf1-83db-955fc65739a5",
+    "crop": "kale",
+    "name": "คะน้า",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:39.009Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 16,
+        "max": 18,
+        "mid": 17,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:39.009Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aacecee6cbda61dfbd1c3",
+        "productName": "ต้นคะน้า",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 18,
+        "max": 20,
+        "mid": 19,
+        "sourceUpdatedAt": "2026-11-24T23:14:00.121Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:00.121Z",
+          "ageMs": 38138888,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "5a04b5c7-7c34-476b-89d6-f5ba3aa78eca",
+    "crop": "pakchoi",
+    "name": "กวางตุ้ง",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:39.305Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 8,
+        "max": 10,
+        "mid": 9,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:39.304Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aacedee6cbda61dfbd1e5",
+        "productName": "กวางตุ้งใบ",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 6,
+        "max": 8,
+        "mid": 7,
+        "sourceUpdatedAt": "2026-11-24T23:14:01.510Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:01.510Z",
+          "ageMs": 38137795,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "d9efdf6d-8de0-4b8b-adad-2e8f7b2072fe",
+    "crop": "chili",
+    "name": "พริก",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:39.589Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 35,
+        "max": 40,
+        "mid": 37.5,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:39.589Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aacebee6cbda61dfbd16f",
+        "productName": "พริกจินดาแดง",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 25,
+        "max": 30,
+        "mid": 27.5,
+        "sourceUpdatedAt": "2026-11-24T23:13:59.815Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:13:59.815Z",
+          "ageMs": 38139774,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "8139b6b5-da71-4328-9038-706d613bbf1f",
+    "crop": "coriander",
+    "name": "ผักชี",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:39.872Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 100,
+        "max": 120,
+        "mid": 110,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:39.872Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aaceeee6cbda61dfbd20e",
+        "productName": "ผักชีไทย",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 120,
+        "max": 130,
+        "mid": 125,
+        "sourceUpdatedAt": "2026-11-24T23:14:00.269Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:00.269Z",
+          "ageMs": 38139603,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "65339965-91b9-48c7-b5c2-43e28f4f7027",
+    "crop": "cucumber",
+    "name": "แตงกวา",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:40.156Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 10,
+        "max": 14,
+        "mid": 12,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:40.155Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "6989c1bd2f44a006e423550e",
+        "productName": "แตงกวา",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 10,
+        "max": 12,
+        "mid": 11,
+        "sourceUpdatedAt": "2026-11-24T23:14:00.762Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:00.762Z",
+          "ageMs": 38139394,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "86112616-7b84-4fae-8ee0-bf4e0be9e792",
+    "crop": "longbean",
+    "name": "ถั่วฝักยาว",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:40.437Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 20,
+        "max": 30,
+        "mid": 25,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:40.437Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "6989c1be2f44a006e423552f",
+        "productName": "ถั่วฝักยาว เนื้อ",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 24,
+        "max": 28,
+        "mid": 26,
+        "sourceUpdatedAt": "2026-11-24T23:14:00.833Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:00.833Z",
+          "ageMs": 38139604,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "b13480d7-819b-43b7-b6c3-777d1251a6f4",
+    "crop": "celery",
+    "name": "ขึ้นฉ่าย",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:40.732Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 70,
+        "max": 80,
+        "mid": 75,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:40.732Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aaceeee6cbda61dfbd22a",
+        "productName": "ขึ้นฉ่าย/ตั้งโอ๋ ดิน",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 70,
+        "max": 80,
+        "mid": 75,
+        "sourceUpdatedAt": "2026-11-24T17:45:22.677Z",
+        "action_date": "2026-11-24T17:50:20.801Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T17:45:22.677Z",
+          "ageMs": 57858055,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "d6fc5793-d2a6-440d-ba48-367c3a74d52d",
+    "crop": "morningglory",
+    "name": "ผักบุ้งจีน",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:41.018Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 22,
+        "max": 24,
+        "mid": 23,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:41.017Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aacf1ee6cbda61dfbd2b8",
+        "productName": "ผักบุ้งจีน",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 16,
+        "max": 18,
+        "mid": 17,
+        "sourceUpdatedAt": "2026-11-24T23:14:02.085Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:02.085Z",
+          "ageMs": 38138933,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 3,
+    "recordType": "market_append",
+    "eventId": "8e7a46af-4a12-4552-86ea-be2d8a01bcb8",
+    "crop": "cabbage",
+    "name": "กะหล่ำปลี",
+    "date": "2026-11-25",
+    "timestamp": "2026-11-25T09:49:41.295Z",
+    "pricePolicy": {
+      "currentMaxAgeMs": 86400000,
+      "staleMaxAgeMs": 172800000,
+      "futureToleranceMs": 0,
+      "allowUnknownTimestamp": true
+    },
+    "markets": [
+      {
+        "market": "ตลาดศรีเมือง ราชบุรี",
+        "productId": null,
+        "productName": null,
+        "selectedSize": null,
+        "unit": "บาท/กก.",
+        "sourceUnit": null,
+        "min": 14,
+        "max": 17,
+        "mid": 15.5,
+        "sourceUpdatedAt": null,
+        "action_date": null,
+        "fetchedAt": "2026-11-25T09:49:41.295Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "unknown_timestamp",
+          "sourceUpdatedAt": null,
+          "ageMs": null,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "unknown_timestamp",
+        "source": "https://www.taladsrimuang.com/site/product/report_all.php?id=1"
+      },
+      {
+        "market": "ตลาดสี่มุมเมือง",
+        "productId": "698aacefee6cbda61dfbd246",
+        "productName": "กะหล่ำปลีเขียว",
+        "selectedSize": "large",
+        "unit": "บาท/กก.",
+        "sourceUnit": {
+          "id": "684a8680856dd00ce1efe36e",
+          "th": "กิโลกรัม",
+          "en": "kg"
+        },
+        "min": 13,
+        "max": 14,
+        "mid": 13.5,
+        "sourceUpdatedAt": "2026-11-24T23:14:00.469Z",
+        "action_date": "2026-11-24T23:13:59.327Z",
+        "fetchedAt": "2026-11-25T09:49:37.800Z",
+        "quality": {
+          "status": "valid"
+        },
+        "freshness": {
+          "status": "current",
+          "sourceUpdatedAt": "2026-11-24T23:14:00.469Z",
+          "ageMs": 38140826,
+          "timezone": "Asia/Bangkok"
+        },
+        "status": "valid",
+        "source": "https://www.simummuangmarket.com/pricing"
+      }
+    ]
   }
 ]
