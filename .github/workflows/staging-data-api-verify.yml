@@ -1,0 +1,54 @@
+name: Staging Data-Only API Verification
+
+on:
+  push:
+    branches:
+      - test/auto-sync-staging-20261122
+    paths:
+      - .github/workflows/staging-data-api-verify.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live-staging:
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/auto-sync-release-20261122
+          persist-credentials: false
+      - name: Read-only verify staging API matches release branch date
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request
+          from pathlib import Path
+          history=json.loads(Path('server/price-history.json').read_text())
+          expected_date=history[-1]['date']
+          assert expected_date>='2026-11-23'
+          crops=['shallot','kale','pakchoi','chili','coriander','cucumber','longbean','celery','morningglory','cabbage']
+          for crop in crops:
+              url='https://farm-price-auto-release-staging.onrender.com/api/history?crop='+crop
+              last_error=None
+              for attempt in range(8):
+                  try:
+                      with urllib.request.urlopen(url,timeout=20) as response:
+                          assert response.status==200
+                          result=json.load(response)
+                      assert result['status']=='ok'
+                      data=result['data']
+                      assert isinstance(data,list) and data
+                      assert result['count']==len(data)
+                      assert data[-1]['date']==expected_date, (crop,data[-1].get('date'),expected_date)
+                      print('PASS',crop,'API count',len(data),'last',data[-1]['date'])
+                      break
+                  except Exception as exc:
+                      last_error=exc
+                      time.sleep(7)
+              else: raise RuntimeError(f'Staging API mismatch: {crop}: {last_error}')
+          print('ALL TEN STAGING APIs MATCH RELEASE DATE',expected_date)
+          PY
