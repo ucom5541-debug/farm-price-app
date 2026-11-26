@@ -1,0 +1,150 @@
+name: Staging Daily Data-Only Release
+
+on:
+  push:
+    branches:
+      - test/auto-sync-staging-20261122
+    paths:
+      - .github/workflows/staging-daily-data-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-daily-data-release-20261122
+  cancel-in-progress: false
+
+jobs:
+  prepare-next-day:
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    outputs:
+      main_sha: ${{ steps.refs.outputs.main_sha }}
+      release_sha: ${{ steps.refs.outputs.release_sha }}
+    env:
+      DEPLOY_BRANCH: test/auto-sync-release-20261122
+    steps:
+      - name: Read-only checkout of staging source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Pin exact upstream and staging release commits
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ucom5541-debug/farm-price-app"
+          test "$GITHUB_REF" = "refs/heads/test/auto-sync-staging-20261122"
+          test "$DEPLOY_BRANCH" = "test/auto-sync-release-20261122"
+          test "$DEPLOY_BRANCH" != "main"
+          git fetch origin refs/heads/main:refs/remotes/origin/main
+          git fetch origin "refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+          echo "main_sha=$(git rev-parse refs/remotes/origin/main)" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$(git rev-parse refs/remotes/origin/$DEPLOY_BRANCH)" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse refs/remotes/origin/$DEPLOY_BRANCH:server/server.js)" = "$(git rev-parse 3af46afc1972cc77d2331d35f2049259f6d582f4:server/server.js)"
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run current and future-day history gate tests
+        run: |
+          set -euo pipefail
+          node --test server/daily-history-gate.test.mjs
+          node --check server/staging-daily-release.mjs
+      - name: Prepare strictly one complete next-day batch from pinned main
+        env:
+          EXPECTED_MAIN_SHA: ${{ steps.refs.outputs.main_sha }}
+        run: |
+          set -euo pipefail
+          node server/staging-daily-release.mjs prepare "$RUNNER_TEMP/next-day-price-history.json"
+      - name: Upload validated staged history only
+        uses: actions/upload-artifact@v4
+        with:
+          name: vetted-staging-history
+          path: ${{ runner.temp }}/next-day-price-history.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-staging-only:
+    needs: prepare-next-day
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    env:
+      DEPLOY_BRANCH: test/auto-sync-release-20261122
+      EXPECTED_MAIN_SHA: ${{ needs.prepare-next-day.outputs.main_sha }}
+      EXPECTED_RELEASE_SHA: ${{ needs.prepare-next-day.outputs.release_sha }}
+    steps:
+      - name: Check out only pinned staging release
+        uses: actions/checkout@v4
+        with:
+          ref: test/auto-sync-release-20261122
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download validated history artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vetted-staging-history
+          path: ${{ runner.temp }}/vetted-data
+      - name: Recheck exact branch heads and history before writing
+        shell: bash
+        env:
+          VETTED: ${{ runner.temp }}/vetted-data/next-day-price-history.json
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_BRANCH" = "test/auto-sync-release-20261122"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main
+          git fetch origin "refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$DEPLOY_BRANCH)" = "$EXPECTED_RELEASE_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$EXPECTED_MAIN_SHA" || {
+            echo "::error::main advanced after collection; require a new reviewed run"
+            exit 1
+          }
+          test "$(git rev-parse HEAD:server/server.js)" = "$(git rev-parse 3af46afc1972cc77d2331d35f2049259f6d582f4:server/server.js)"
+          git show "$EXPECTED_MAIN_SHA:server/price-history.json" > "$RUNNER_TEMP/verified-upstream.json"
+          node --input-type=module - "$VETTED" "$RUNNER_TEMP/verified-upstream.json" <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const [vetted, upstream] = process.argv.slice(2).map(p=>JSON.parse(fs.readFileSync(p,'utf8')));
+          assert.ok(Array.isArray(vetted) && Array.isArray(upstream));
+          assert.deepEqual(vetted,upstream.slice(0,vetted.length),'Data artifact is not a prefix of pinned main');
+          NODE
+          cp "$VETTED" "$RUNNER_TEMP/next-day-price-history.json"
+          git show "$EXPECTED_MAIN_SHA:server/price-history.json" > "$RUNNER_TEMP/unused-main-history.json"
+          cp "$VETTED" server/price-history.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const original=JSON.parse(execFileSync('git',['show','HEAD:server/price-history.json'],{encoding:'utf8'}));
+          const newer=JSON.parse(fs.readFileSync('server/price-history.json','utf8'));
+          assert.equal(newer.length-original.length,10);
+          assert.deepEqual(newer.slice(0,original.length),original);
+          const rows=newer.slice(original.length);
+          assert.equal(new Set(rows.map(x=>x.crop)).size,10);
+          assert.equal(new Set(rows.map(x=>x.date)).size,1);
+          NODE
+          git add -- server/price-history.json
+          git diff --cached --check
+          test "$(git diff --cached --name-only)" = "server/price-history.json"
+      - name: Commit and fast-forward staging release branch only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_BRANCH" = "test/auto-sync-release-20261122"
+          test "$DEPLOY_BRANCH" != "main"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test: staging data-only next-day release"
+          git -c 'credential.helper=!f() { echo username=x-access-token; echo password="$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$DEPLOY_BRANCH"
