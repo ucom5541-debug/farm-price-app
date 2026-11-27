@@ -205,9 +205,14 @@ jobs:
           history=json.loads(Path('server/price-history.json').read_text(encoding='utf-8'))
           crops=('shallot','kale','pakchoi','chili','coriander','cucumber','longbean','celery','morningglory','cabbage')
           expected_day=history[-1]['date']
-          expected={crop:sum(r['crop']==crop for r in history) for crop in crops}
-          assert sum(r['date']==expected_day for r in history)==10, 'Release day is incomplete'
-          assert {r['crop'] for r in history if r['date']==expected_day}==set(crops), 'Release crop mismatch'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          def local_day(row):
+              return datetime.fromisoformat(row['timestamp'].replace('Z','+00:00')).astimezone(ZoneInfo('Asia/Bangkok')).date().isoformat()
+          # The API groups legacy and v3 events into one entry per crop/day.
+          expected={crop:len({local_day(r) for r in history if r['crop']==crop}) for crop in crops}
+          assert sum(r.get('date')==expected_day for r in history)==10, 'Release day is incomplete'
+          assert {r['crop'] for r in history if r.get('date')==expected_day}==set(crops), 'Release crop mismatch'
           last_errors={}
           for attempt in range(30):
               last_errors={}
