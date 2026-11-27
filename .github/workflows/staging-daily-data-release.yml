@@ -62,6 +62,34 @@ jobs:
         run: |
           set -euo pipefail
           node server/staging-daily-release.mjs prepare "$RUNNER_TEMP/next-day-price-history.json"
+      - name: Reject incomplete daily batch in isolated temporary Git commit
+        env:
+          EXPECTED_MAIN_SHA: ${{ steps.refs.outputs.main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show "$EXPECTED_MAIN_SHA:server/price-history.json" > "$RUNNER_TEMP/upstream.json"
+          git show "refs/remotes/origin/$DEPLOY_BRANCH:server/price-history.json" > "$RUNNER_TEMP/old.json"
+          node --input-type=module - "$RUNNER_TEMP" <<'NODE'
+          import fs from 'node:fs';
+          const dir=process.argv[2];
+          const old=JSON.parse(fs.readFileSync(dir+'/old.json'));
+          const upstream=JSON.parse(fs.readFileSync(dir+'/upstream.json'));
+          fs.writeFileSync(dir+'/partial.json',JSON.stringify(upstream.slice(0,old.length+9)));
+          NODE
+          blob=$(git hash-object -w "$RUNNER_TEMP/partial.json")
+          export GIT_INDEX_FILE="$RUNNER_TEMP/negative-index"
+          git read-tree "$EXPECTED_MAIN_SHA"
+          git update-index --cacheinfo "100644,$blob,server/price-history.json"
+          tree=$(git write-tree)
+          bad=$(echo 'local negative test only' | git -c user.name=Test -c user.email=test@example.invalid commit-tree "$tree")
+          unset GIT_INDEX_FILE
+          if EXPECTED_MAIN_SHA="$bad" node server/staging-daily-release.mjs prepare "$RUNNER_TEMP/forbidden.json" > "$RUNNER_TEMP/reject.log" 2>&1; then
+            echo "::error::Incomplete batch accepted"; exit 1
+          fi
+          grep -F 'Missing complete next-day batch' "$RUNNER_TEMP/reject.log"
+          test ! -e "$RUNNER_TEMP/forbidden.json"
+          echo 'PASS: incomplete batch rejected before artifact or push'
       - name: Upload validated staged history only
         uses: actions/upload-artifact@v4
         with:
