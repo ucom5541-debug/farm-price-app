@@ -1,4 +1,5 @@
 name: Staging Data-Only API Verification
+# Repeat live API check after consecutive data-only deployments.
 
 on:
   push:
