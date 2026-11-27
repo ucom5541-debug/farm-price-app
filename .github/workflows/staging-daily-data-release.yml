@@ -177,3 +177,81 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test: staging data-only next-day release"
           git -c 'credential.helper=!f() { echo username=x-access-token; echo password="$GH_TOKEN"; }; f' push origin "HEAD:refs/heads/$DEPLOY_BRANCH"
+
+  verify-staging-api:
+    needs: [prepare-next-day, publish-staging-only]
+    if: github.repository == 'ucom5541-debug/farm-price-app' && github.ref == 'refs/heads/test/auto-sync-staging-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - name: Check out only the staging data release
+        uses: actions/checkout@v4
+        with:
+          ref: test/auto-sync-release-20261122
+          persist-credentials: false
+      - name: Wait for Render then verify all 10 API histories against the release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          from pathlib import Path
+
+          base='https://farm-price-auto-release-staging.onrender.com'
+          assert base=='https://farm-price-auto-release-staging.onrender.com'
+          assert base!='https://farm-price-app.onrender.com'
+          history=json.loads(Path('server/price-history.json').read_text(encoding='utf-8'))
+          crops=('shallot','kale','pakchoi','chili','coriander','cucumber','longbean','celery','morningglory','cabbage')
+          expected_day=history[-1]['date']
+          expected={crop:sum(r['crop']==crop for r in history) for crop in crops}
+          assert sum(r['date']==expected_day for r in history)==10, 'Release day is incomplete'
+          assert {r['crop'] for r in history if r['date']==expected_day}==set(crops), 'Release crop mismatch'
+          last_errors={}
+          for attempt in range(30):
+              last_errors={}
+              for crop in crops:
+                  try:
+                      with urllib.request.urlopen(base+'/api/history?crop='+crop,timeout=20) as response:
+                          assert response.status==200
+                          data=json.load(response)
+                      assert data.get('status')=='ok'
+                      rows=data.get('data')
+                      assert isinstance(rows,list)
+                      assert data.get('count')==expected[crop]==len(rows), (crop,'count mismatch',data.get('count'),expected[crop])
+                      assert rows and rows[-1].get('date')==expected_day, (crop,'day mismatch',rows[-1].get('date') if rows else None,expected_day)
+                  except Exception as exc:
+                      last_errors[crop]=str(exc)
+              if not last_errors:
+                  print('PASS: all ten Staging APIs match released history',expected_day,'total_history_records',len(history))
+                  with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
+                      f.write('### Staging history verification passed\n')
+                      f.write('Date: '+expected_day+'; total records: '+str(len(history))+'; all ten crop counts matched.\n')
+                  break
+              if attempt<29:
+                  print('Waiting for Staging deployment, attempt',attempt+1,'of 30; pending',','.join(last_errors.keys()))
+                  time.sleep(8)
+          else:
+              print('STAGING API VERIFICATION FAILED:',json.dumps(last_errors,ensure_ascii=False))
+              raise SystemExit(1)
+          PY
+
+  report-staging-failure:
+    needs: [prepare-next-day, publish-staging-only, verify-staging-api]
+    if: ${{ always() && (needs.prepare-next-day.result == 'failure' || needs.publish-staging-only.result == 'failure' || needs.verify-staging-api.result == 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Record a visible failure in GitHub Actions
+        env:
+          PREPARE_STATUS: ${{ needs.prepare-next-day.result }}
+          PUBLISH_STATUS: ${{ needs.publish-staging-only.result }}
+          VERIFY_STATUS: ${{ needs.verify-staging-api.result }}
+        shell: bash
+        run: |
+          echo "### STAGING DATA SYNC FAILED — NO PRODUCTION ACTION" >> "$GITHUB_STEP_SUMMARY"
+          echo "Prepare: $PREPARE_STATUS; publish: $PUBLISH_STATUS; verify: $VERIFY_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Staging daily data release failed. Review the failed workflow steps. No Production deploy was requested."
+          exit 1
