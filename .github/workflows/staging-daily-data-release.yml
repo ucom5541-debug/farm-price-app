@@ -1,4 +1,5 @@
 name: Staging Daily Data-Only Release
+# Staging drill iteration: advance another verified full day.
 
 on:
   push:
